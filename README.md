@@ -21,9 +21,9 @@ $ (venv) pip install -r requirements.txt
 
 ## Run
 
-1. Add google credentials.json to auth/credentials.json
+1. Copy `auth/credentials.example.json` to `auth/credentials.json` and fill it in with your Google OAuth client credentials (downloaded from the Google Cloud Console).
 
-2. Add github token to auth/ghub.json
+2. Copy `auth/ghub.example.json` to `auth/ghub.json` and fill it in with your GitHub token and project ID:
 
 ```bash
 {
@@ -32,7 +32,9 @@ $ (venv) pip install -r requirements.txt
 }
 ```
 
-3. Run the script
+3. Copy `.env.example` to `.env` and fill in the same GitHub token and project ID if you prefer using environment variables.
+
+4. Run the script
 
 ```bash
 $ (venv) python3 src/main.py

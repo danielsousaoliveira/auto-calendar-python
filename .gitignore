@@ -165,5 +165,6 @@ projectItems.*
 events.*
 .vscode
 .vscode/
-auth/
+auth/*
+!auth/*.example.json
 raw/
