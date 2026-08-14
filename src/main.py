@@ -1,5 +1,5 @@
-from g_cal import *
-from ghub import *
+from .g_cal import *
+from .ghub import *
 from googleapiclient.errors import HttpError
 
 def main():

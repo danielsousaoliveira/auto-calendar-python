@@ -13,10 +13,10 @@ $ python3 -m venv venv
 $ . venv/bin/activate
 ```
 
-2. Install dependencies and packages
+2. Install the pinned dependencies and package
 
 ```bash
-$ (venv) pip install -r requirements.txt
+$ uv sync --locked
 ```
 
 ## Run
@@ -37,7 +37,7 @@ $ (venv) pip install -r requirements.txt
 4. Run the script
 
 ```bash
-$ (venv) python3 src/main.py
+$ uv run cal-auto-python
 ```
 
 ## Roadmap
