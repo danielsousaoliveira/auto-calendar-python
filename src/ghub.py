@@ -1,7 +1,7 @@
 import requests
 import os
 import json
-from utils.utils import parse_response_to_list
+from src.utils.utils import parse_response_to_list
 
 
 url = "https://api.github.com/graphql"
