@@ -1,6 +1,6 @@
 import pytest
-from pytest_mock import mocker
 from src.g_cal import *
+
 
 @pytest.fixture
 def mock_service(mocker):
@@ -9,12 +9,12 @@ def mock_service(mocker):
     mocker.patch("src.g_cal.get_calendar_service", return_value=service_mock)
     return service_mock
 
+
 @pytest.mark.parametrize(
     "mock_response, expected_events, expected_len",
     [
         # Test case 1: No events
         ({"items": []}, [], 0),
-        
         # Test case 2: Multiple events
         (
             {
@@ -29,17 +29,10 @@ def mock_service(mocker):
             ],
             2,
         ),
-        
         # Test case 3: Event with only date
         (
-            {
-                "items": [
-                    {"summary": "All Day Event", "start": {"date": "2024-08-30"}}
-                ]
-            },
-            [
-                {"summary": "All Day Event", "start": {"date": "2024-08-30"}}
-            ],
+            {"items": [{"summary": "All Day Event", "start": {"date": "2024-08-30"}}]},
+            [{"summary": "All Day Event", "start": {"date": "2024-08-30"}}],
             1,
         ),
     ],
