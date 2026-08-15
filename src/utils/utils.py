@@ -1,6 +1,6 @@
 from typing import List
 from dataclasses import asdict
-from src.dtos.project_item import ProjectItemDTO
+from ..dtos.project_item import ProjectItemDTO
 from datetime import datetime, timezone
 import pickle
 
