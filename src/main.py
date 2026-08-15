@@ -1,7 +1,10 @@
 from .g_cal import *
+from .scheduler import schedule
+from .dtos.schedule import ScheduleWindow, ScheduledBlock
 from .ghub import *
 from googleapiclient.errors import HttpError
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from .settings import load_settings
 from .errors import AutoCalendarError
 from .logger import logger
@@ -21,17 +24,31 @@ def main():
 
         schedule_start = date.today()
         schedule_end = schedule_start + timedelta(days=2)
-        scheduledTasks = schedule_events_from_project_items(
-            schedule_start.isoformat(),
-            schedule_end.isoformat(),
-            settings.working_day_start,
-            settings.working_day_end,
-            events,
-            projectItems,
-            settings,
+        timezone = ZoneInfo(settings.timezone)
+        window = ScheduleWindow(
+            datetime.combine(
+                schedule_start,
+                datetime.strptime(settings.working_day_start, "%H:%M").time(),
+                timezone,
+            ),
+            datetime.combine(
+                schedule_end,
+                datetime.strptime(settings.working_day_end, "%H:%M").time(),
+                timezone,
+            ),
         )
+        busy_blocks = [
+            ScheduledBlock(
+                title=event.get("summary", ""),
+                start=datetime.fromisoformat(event["start"]["dateTime"]).astimezone(timezone),
+                end=datetime.fromisoformat(event["end"]["dateTime"]).astimezone(timezone),
+            )
+            for event in events
+            if "dateTime" in event.get("start", {}) and "dateTime" in event.get("end", {})
+        ]
+        plan = schedule(projectItems, busy_blocks, window)
 
-        for task in scheduledTasks:
+        for task in plan.scheduled:
             event = create_event_to_insert_from_project_item(task, settings)
             insert_google_event(calService, event.to_dict(), settings)
             tasks = create_tasks_to_insert_from_project_item(task)

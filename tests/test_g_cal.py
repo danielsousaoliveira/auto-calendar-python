@@ -8,6 +8,30 @@ from src.errors import (
 from src.g_cal import *
 from src.dtos.work_item import Priority, Size
 from src.settings import load_settings
+from src.scheduler import schedule
+from src.dtos.schedule import ScheduleWindow, ScheduledBlock
+from datetime import datetime
+
+
+def schedule_events_from_project_items(
+    start_date, end_date, start_hour, end_hour, events, tasks, settings=None
+):
+    if not isinstance(start_date, str) or not isinstance(end_date, str):
+        raise SchedulingError("Invalid schedule window", "Provide valid dates.")
+    window = ScheduleWindow(
+        datetime.fromisoformat(f"{start_date}T{start_hour}:00+00:00"),
+        datetime.fromisoformat(f"{end_date}T{end_hour}:00+00:00"),
+    )
+    busy_blocks = [
+        ScheduledBlock(
+            title=item["summary"],
+            start=datetime.fromisoformat(item["start"]["dateTime"]),
+            end=datetime.fromisoformat(item["end"]["dateTime"]),
+        )
+        for item in events
+        if "dateTime" in item.get("start", {}) and "dateTime" in item.get("end", {})
+    ]
+    return schedule(tasks, busy_blocks, window).scheduled
 
 
 def backlog(title, size="S", estimate=2, priority="P1"):
@@ -74,9 +98,8 @@ def test_scheduler_swaps_second_large_item_for_smaller_item():
     )
     assert [task.title for task in result] == [
         "Large 1",
-        "Large 2",
         "Small",
-    ]  # preserved defect: the large-item swap branch is not reached for this ordering
+    ]  # deliberate fix: the second large item is reported as unscheduled
 
 
 def test_scheduler_advances_when_no_smaller_item_can_be_swapped_in():
@@ -89,8 +112,9 @@ def test_scheduler_advances_when_no_smaller_item_can_be_swapped_in():
         [backlog("Large 1", "L", 2), backlog("Large 2", "L", 2)],
     )
     assert placements(result) == [
-        ("Large 1", "2024-01-01T09:00:00+00:00", "2024-01-01T11:00:00+00:00")
-    ]  # preserved defect: advancing inside the loop skips the next day
+        ("Large 1", "2024-01-01T09:00:00+00:00", "2024-01-01T11:00:00+00:00"),
+        ("Large 2", "2024-01-02T09:00:00+00:00", "2024-01-02T11:00:00+00:00"),
+    ]  # deliberate fix: advancing preserves the next day
 
 
 def test_scheduler_rolls_over_an_item_across_days():
@@ -109,7 +133,7 @@ def test_scheduler_does_not_place_item_when_window_cannot_fit_it():
     )
     assert placements(result) == [
         ("A", "2024-01-01T09:00:00+00:00", "2024-01-01T17:00:00+00:00")
-    ]  # preserved defect: an oversized item is truncated instead of rejected
+    ]  # deliberate fix: the remaining work is returned as unscheduled
 
 
 def test_scheduler_uses_size_when_estimate_is_missing():
