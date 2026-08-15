@@ -1,5 +1,10 @@
 import pytest
-from src.errors import ConfigurationError, SchedulingError
+from google.auth.exceptions import RefreshError
+from src.errors import (
+    AuthorizationError,
+    AuthorizationExpiredError,
+    SchedulingError,
+)
 from src.g_cal import *
 from src.dtos.work_item import Priority, Size
 from src.settings import load_settings
@@ -208,11 +213,59 @@ def test_list_all_google_tasks_succeeds_when_a_task_has_no_due_date(mocker):
     assert [item["id"] for item in items] == ["1", "2"]
 
 
-def test_authenticate_raises_configuration_error_when_credentials_file_missing(tmp_path):
+def test_load_credentials_requires_authorization_when_token_file_missing(tmp_path):
     settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
 
-    with pytest.raises(ConfigurationError, match="Missing Google OAuth client file"):
-        authenticate(settings)
+    with pytest.raises(AuthorizationError, match="cal-auto-python authorize"):
+        load_credentials(settings)
+
+
+def test_load_credentials_requires_one_off_authorization_without_network(tmp_path, mocker):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+    request = mocker.patch("src.g_cal.Request")
+    browser = mocker.patch("src.g_cal.InstalledAppFlow")
+
+    with pytest.raises(AuthorizationError, match="cal-auto-python authorize"):
+        load_credentials(settings)
+
+    request.assert_not_called()
+    browser.assert_not_called()
+
+
+def test_load_credentials_reports_refresh_failure_separately(tmp_path, mocker):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+    settings.google_token_file.write_text("token")
+    settings.google_token_file.chmod(0o600)
+    credentials = mocker.Mock(valid=False, expired=True, refresh_token="refresh")
+    mocker.patch("src.g_cal.Credentials.from_authorized_user_file", return_value=credentials)
+    credentials.refresh.side_effect = RefreshError("expired")
+
+    with pytest.raises(AuthorizationExpiredError, match="could not be refreshed"):
+        load_credentials(settings)
+
+
+def test_load_credentials_rejects_token_readable_by_group(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+    settings.google_token_file.write_text("token")
+    settings.google_token_file.chmod(0o640)
+
+    with pytest.raises(AuthorizationError, match="readable by other users"):
+        load_credentials(settings)
+
+
+def test_authorize_credentials_is_the_only_browser_flow(tmp_path, mocker):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+    settings.google_credentials_file.write_text("credentials")
+    flow = mocker.patch("src.g_cal.InstalledAppFlow.from_client_secrets_file")
+    credentials = mocker.Mock()
+    credentials.to_json.return_value = "token"
+    flow.return_value.run_local_server.return_value = credentials
+
+    authorize_credentials(settings)
+
+    flow.assert_called_once()
+    assert settings.google_token_file.read_text() == "token"
+    assert settings.google_token_file.stat().st_mode & 0o777 == 0o600
 
 
 def test_list_all_google_tasks_returns_empty_list_when_no_tasks(mocker):
