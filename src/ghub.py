@@ -5,6 +5,7 @@ from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
 
 url = "https://api.github.com/graphql"
 
+
 def get_github_auth(settings: Settings | None = None):
     settings = settings or load_settings()
     legacy = legacy_auth_dir() / "ghub.json"
@@ -12,6 +13,7 @@ def get_github_auth(settings: Settings | None = None):
         warn_legacy_auth(legacy)
     token, project_id = settings.require_github()
     return token, project_id
+
 
 def get_github_query(projectID):
 
@@ -84,12 +86,11 @@ def get_github_query(projectID):
     }}
     """
 
+
 def get_github_headers(token):
 
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
 
 def get_github_project_items(token, projectID):
 
@@ -102,10 +103,11 @@ def get_github_project_items(token, projectID):
         data = response.json()
         projectItems = parse_response_to_list(data)
         return projectItems
-        
+
     except requests.exceptions.RequestException as e:
         print("Error:", e)
         return None
+
 
 def display_github_project_items(projectItems):
     for item in projectItems:

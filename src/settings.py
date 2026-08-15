@@ -55,8 +55,14 @@ def load_settings(environ: dict[str, str] | None = None) -> Settings:
         raise ValueError("Working hours must use strict HH:MM values")
     if start >= end:
         raise ValueError("Working day start must be earlier than end")
-    attendees = tuple(value.strip() for value in env.get("CAL_AUTO_ATTENDEES", "").split(",") if value.strip())
-    statuses = frozenset(value.strip() for value in env.get("CAL_AUTO_SCHEDULABLE_STATUSES", "Backlog").split(",") if value.strip())
+    attendees = tuple(
+        value.strip() for value in env.get("CAL_AUTO_ATTENDEES", "").split(",") if value.strip()
+    )
+    statuses = frozenset(
+        value.strip()
+        for value in env.get("CAL_AUTO_SCHEDULABLE_STATUSES", "Backlog").split(",")
+        if value.strip()
+    )
     return Settings(
         config_dir=config_dir,
         google_credentials_file=config_dir / "credentials.json",
