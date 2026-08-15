@@ -1,5 +1,7 @@
 import pytest
+from src.errors import ConfigurationError, SchedulingError
 from src.g_cal import *
+from src.settings import load_settings
 
 
 def backlog(title, size="S", estimate=2, priority="P1"):
@@ -187,3 +189,38 @@ def test_list_all_google_events(mock_service, mock_response, expected_events, ex
     assert len(events) == expected_len
     assert events == expected_events
     mock_service.events().list().execute.assert_called_once()
+
+
+def test_list_all_google_tasks_succeeds_when_a_task_has_no_due_date(mocker):
+    service_mock = mocker.Mock()
+    service_mock.tasks.return_value.list.return_value.execute.return_value = {
+        "items": [
+            {"title": "With due date", "id": "1", "due": "2024-08-30T00:00:00Z"},
+            {"title": "No due date", "id": "2"},
+        ]
+    }
+
+    items = list_all_google_tasks(service_mock)
+
+    assert [item["id"] for item in items] == ["1", "2"]
+
+
+def test_authenticate_raises_configuration_error_when_credentials_file_missing(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+
+    with pytest.raises(ConfigurationError, match="Missing Google OAuth client file"):
+        authenticate(settings)
+
+
+def test_list_all_google_tasks_returns_empty_list_when_no_tasks(mocker):
+    service_mock = mocker.Mock()
+    service_mock.tasks.return_value.list.return_value.execute.return_value = {"items": []}
+
+    items = list_all_google_tasks(service_mock)
+
+    assert items == []
+
+
+def test_scheduler_raises_scheduling_error_on_non_string_date():
+    with pytest.raises(SchedulingError, match="Invalid schedule window"):
+        schedule_events_from_project_items(None, "2024-01-01", "09:00", "17:00", [], [])

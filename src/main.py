@@ -3,13 +3,14 @@ from .ghub import *
 from googleapiclient.errors import HttpError
 from datetime import date, timedelta
 from .settings import load_settings
+from .errors import AutoCalendarError
+from .logger import logger
 
 
 def main():
-    settings = load_settings()
-
-    creds = authenticate(settings)
     try:
+        settings = load_settings()
+        creds = authenticate(settings)
         calService = get_calendar_service(creds)
         taskService = get_tasks_service(creds)
         list_all_google_tasks(taskService, settings)
@@ -39,12 +40,14 @@ def main():
             for t in tasks:
                 insert_google_task(taskService, t.to_dict(), settings)
 
-            print(
+            logger.info(
                 f"Task '{task.title}' scheduled from {task.startDate} to {task.endDate} with priority {task.priority} and size {task.size}, estimate: {task.estimate} hours."
             )
 
     except HttpError as error:
-        print(f"An error occurred: {error}")
+        logger.error(f"An error occurred: {error}")
+    except AutoCalendarError as error:
+        logger.error(f"{error.args[0]} Hint: {error.hint}")
 
 
 if __name__ == "__main__":

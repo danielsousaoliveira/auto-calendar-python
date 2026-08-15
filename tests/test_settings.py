@@ -1,5 +1,6 @@
 import pytest
 
+from src.errors import ConfigurationError
 from src.settings import load_settings
 
 
@@ -23,7 +24,7 @@ def test_required_github_values_are_validated_on_use(tmp_path):
     settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
 
     assert settings.timezone == "Europe/Lisbon"
-    with pytest.raises(ValueError, match="GITHUB_TOKEN"):
+    with pytest.raises(ConfigurationError, match="GitHub integration is not configured"):
         settings.require_github()
 
 
