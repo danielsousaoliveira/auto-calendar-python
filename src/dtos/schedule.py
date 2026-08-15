@@ -22,6 +22,7 @@ class ScheduledBlock:
     status: Optional[str] = None
     description: Optional[str] = None
     tasks: Optional[List[str]] = None
+    source_id: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -21,6 +21,10 @@ class TaskDTO:
     hidden: bool = False
     links: Optional[List[TaskLinkDTO]] = None
 
+    def __post_init__(self) -> None:
+        if not self.title:
+            raise ValueError("TaskDTO requires a non-empty title")
+
     def to_dict(self) -> Dict:
         filtered_dict = {k: v for k, v in asdict(self).items() if v is not None}
         return filtered_dict

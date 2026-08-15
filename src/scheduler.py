@@ -72,6 +72,7 @@ def schedule(
                 status=item.status,
                 description=item.description,
                 tasks=item.tasks,
+                source_id=item.id,
             )
             scheduled.append(scheduled_block)
             occupied.append(scheduled_block)

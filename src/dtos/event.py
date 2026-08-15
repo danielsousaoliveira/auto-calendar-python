@@ -14,6 +14,14 @@ class EventDTO:
     attendees: Optional[List[Dict[str, str]]] = None
     reminders: Optional[Dict[str, Optional[bool]]] = None
 
+    def __post_init__(self) -> None:
+        if not self.summary:
+            raise ValueError("EventDTO requires a non-empty summary")
+        if "dateTime" not in self.start or "timeZone" not in self.start:
+            raise ValueError("EventDTO.start requires dateTime and timeZone")
+        if "dateTime" not in self.end or "timeZone" not in self.end:
+            raise ValueError("EventDTO.end requires dateTime and timeZone")
+
     def to_dict(self) -> Dict:
         filtered_dict = {k: v for k, v in asdict(self).items() if v is not None}
         return filtered_dict

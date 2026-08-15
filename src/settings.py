@@ -9,6 +9,7 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .errors import ConfigurationError
 
@@ -76,13 +77,26 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         for value in env.get("CAL_AUTO_SCHEDULABLE_STATUSES", "Backlog").split(",")
         if value.strip()
     )
+    timezone = env.get("CAL_AUTO_TIMEZONE", "").strip()
+    if not timezone:
+        raise ConfigurationError(
+            "No timezone configured",
+            hint="Set CAL_AUTO_TIMEZONE to an IANA timezone name, e.g. Europe/Lisbon.",
+        )
+    try:
+        ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ConfigurationError(
+            f"Unknown timezone: {timezone}",
+            hint="Set CAL_AUTO_TIMEZONE to a valid IANA timezone name, e.g. Europe/Lisbon.",
+        ) from exc
     return Settings(
         config_dir=config_dir,
         google_credentials_file=config_dir / "credentials.json",
         google_token_file=config_dir / "token.json",
         github_token=env.get("GITHUB_TOKEN"),
         github_project_id=env.get("GITHUB_PROJECT_ID"),
-        timezone=env.get("CAL_AUTO_TIMEZONE", "Europe/Lisbon"),
+        timezone=timezone,
         working_day_start=start,
         working_day_end=end,
         calendar_id=env.get("CAL_AUTO_CALENDAR_ID", "primary"),

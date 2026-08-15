@@ -8,7 +8,7 @@ from src.settings import load_settings
 
 
 def test_get_github_auth_raises_configuration_error_when_credentials_missing(tmp_path):
-    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
 
     with pytest.raises(ConfigurationError, match="GITHUB_TOKEN"):
         settings.require_github()

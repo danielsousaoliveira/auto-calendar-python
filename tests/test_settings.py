@@ -9,6 +9,7 @@ def test_override_is_created_and_isolates_credentials(tmp_path):
     settings = load_settings(
         {
             "CAL_AUTO_CONFIG_DIR": str(config),
+            "CAL_AUTO_TIMEZONE": "UTC",
             "GITHUB_TOKEN": "token",
             "GITHUB_PROJECT_ID": "project",
         }
@@ -21,11 +22,20 @@ def test_override_is_created_and_isolates_credentials(tmp_path):
 
 
 def test_required_github_values_are_validated_on_use(tmp_path):
-    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
 
-    assert settings.timezone == "Europe/Lisbon"
     with pytest.raises(ConfigurationError, match="GitHub integration is not configured"):
         settings.require_github()
+
+
+def test_missing_timezone_is_rejected_at_load_time(tmp_path):
+    with pytest.raises(ConfigurationError, match="No timezone configured"):
+        load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
+
+
+def test_unknown_timezone_is_rejected_at_load_time(tmp_path):
+    with pytest.raises(ConfigurationError, match="Unknown timezone"):
+        load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "Not/A_Zone"})
 
 
 def test_all_optional_values_are_typed_and_configurable(tmp_path):
