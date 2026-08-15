@@ -90,7 +90,9 @@ def find_next_available_slot(
 
 def assign_estimate_if_missing(task: WorkItem):
     if task.estimate is None:
-        task.estimate = SIZE_DEFAULT_ESTIMATE_HOURS.get(task.size, 1.0) if task.size is not None else 1.0
+        task.estimate = (
+            SIZE_DEFAULT_ESTIMATE_HOURS.get(task.size, 1.0) if task.size is not None else 1.0
+        )
 
 
 def extract_tasks(description: str) -> list:

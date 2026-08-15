@@ -146,7 +146,13 @@ def create_event_to_insert_from_project_item(
 
 
 def schedule_events_from_project_items(
-    startDate, endDate, startHour, endHour, events, tasks: list[WorkItem], settings: Settings | None = None
+    startDate,
+    endDate,
+    startHour,
+    endHour,
+    events,
+    tasks: list[WorkItem],
+    settings: Settings | None = None,
 ) -> SchedulePlan:
     settings = settings or load_settings()
 
