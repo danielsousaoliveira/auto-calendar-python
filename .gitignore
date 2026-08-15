@@ -175,3 +175,6 @@ auth/credentials.json
 auth/ghub.json
 auth/token.json
 raw/
+CLAUDE.md
+AGENTS.md
+tickets/

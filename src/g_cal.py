@@ -6,10 +6,10 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from src.dtos.event import EventDTO
-from src.dtos.task import TaskDTO
-from src.dtos.project_item import ProjectItemDTO
-from src.utils.utils import *
+from .dtos.event import EventDTO
+from .dtos.task import TaskDTO
+from .dtos.project_item import ProjectItemDTO
+from .utils.utils import *
 import random
 
 # If modifying these scopes, delete the file token.json.
