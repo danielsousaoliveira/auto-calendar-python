@@ -7,10 +7,10 @@ url = "https://api.github.com/graphql"
 
 def get_github_auth(settings: Settings | None = None):
     settings = settings or load_settings()
-    token, project_id = settings.require_github()
     legacy = legacy_auth_dir() / "ghub.json"
     if legacy.exists():
         warn_legacy_auth(legacy)
+    token, project_id = settings.require_github()
     return token, project_id
 
 def get_github_query(projectID):

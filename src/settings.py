@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import warnings
 from dataclasses import dataclass
@@ -39,12 +40,21 @@ def _config_dir(environ: dict[str, str]) -> Path:
     else:
         path = Path(environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "cal-auto-python"
     path.mkdir(parents=True, exist_ok=True)
+    if path.stat().st_uid == os.getuid():
+        path.chmod(0o700)
     return path
 
 
 def load_settings(environ: dict[str, str] | None = None) -> Settings:
     env = os.environ if environ is None else environ
     config_dir = _config_dir(env)
+    start = env.get("CAL_AUTO_WORKING_DAY_START", "09:00")
+    end = env.get("CAL_AUTO_WORKING_DAY_END", "17:00")
+    time_pattern = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    if not time_pattern.fullmatch(start) or not time_pattern.fullmatch(end):
+        raise ValueError("Working hours must use strict HH:MM values")
+    if start >= end:
+        raise ValueError("Working day start must be earlier than end")
     attendees = tuple(value.strip() for value in env.get("CAL_AUTO_ATTENDEES", "").split(",") if value.strip())
     statuses = frozenset(value.strip() for value in env.get("CAL_AUTO_SCHEDULABLE_STATUSES", "Backlog").split(",") if value.strip())
     return Settings(
@@ -54,8 +64,8 @@ def load_settings(environ: dict[str, str] | None = None) -> Settings:
         github_token=env.get("GITHUB_TOKEN"),
         github_project_id=env.get("GITHUB_PROJECT_ID"),
         timezone=env.get("CAL_AUTO_TIMEZONE", "Europe/Lisbon"),
-        working_day_start=env.get("CAL_AUTO_WORKING_DAY_START", "09:00"),
-        working_day_end=env.get("CAL_AUTO_WORKING_DAY_END", "17:00"),
+        working_day_start=start,
+        working_day_end=end,
         calendar_id=env.get("CAL_AUTO_CALENDAR_ID", "primary"),
         task_list_id=env.get("CAL_AUTO_TASK_LIST_ID", "@default"),
         attendees=attendees,

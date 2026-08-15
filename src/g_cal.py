@@ -37,8 +37,9 @@ def authenticate(settings: Settings | None = None):
         )
         creds = flow.run_local_server(port=0)
       
-      with open(tokenPath, "w") as token:
+      with open(tokenPath, "w", opener=lambda path, flags: os.open(path, flags, 0o600)) as token:
         token.write(creds.to_json())
+      os.chmod(tokenPath, 0o600)
 
     return creds
 
@@ -53,7 +54,7 @@ def get_tasks_service(creds: Credentials):
 def list_all_google_events(service, settings: Settings | None = None):
     settings = settings or load_settings()
 
-    now = datetime.now().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     print(f"Getting the upcoming 100 events")
     eventsResult = (
         service.events()

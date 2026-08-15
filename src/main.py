@@ -1,6 +1,7 @@
 from .g_cal import *
 from .ghub import *
 from googleapiclient.errors import HttpError
+from datetime import date, timedelta
 from .settings import load_settings
 
 def main():
@@ -17,7 +18,9 @@ def main():
     
     display_github_project_items(projectItems)
     
-    scheduledTasks = schedule_events_from_project_items('2024-09-05', '2024-09-07', settings.working_day_start, settings.working_day_end, events, projectItems, settings)
+    schedule_start = date.today()
+    schedule_end = schedule_start + timedelta(days=2)
+    scheduledTasks = schedule_events_from_project_items(schedule_start.isoformat(), schedule_end.isoformat(), settings.working_day_start, settings.working_day_end, events, projectItems, settings)
 
     for task in scheduledTasks:
         event = create_event_to_insert_from_project_item(task, settings)

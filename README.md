@@ -19,7 +19,7 @@ $ uv sync --locked
 
 ## Run
 
-1. Put your Google OAuth client credentials in the platform configuration directory as `credentials.json` (downloaded from the Google Cloud Console). Set `CAL_AUTO_CONFIG_DIR` to choose a different directory; the default is `$XDG_CONFIG_HOME/cal-auto-python` or `~/.config/cal-auto-python`.
+1. Put your Google OAuth client credentials in the platform configuration directory as `credentials.json` (downloaded from the Google Cloud Console). Set `CAL_AUTO_CONFIG_DIR` to choose a different directory; the default is `%APPDATA%\\cal-auto-python` on Windows, `$XDG_CONFIG_HOME/cal-auto-python` when `XDG_CONFIG_HOME` is set, or `~/.config/cal-auto-python` on Unix.
 
 2. Set the GitHub token and project ID as environment variables:
 
