@@ -16,7 +16,8 @@ def main():
         list_all_google_tasks(taskService, settings)
         events = list_all_google_events(calService, settings)
         token, projectId = get_github_auth(settings)
-        projectItems = get_github_project_items(token, projectId)
+        taskSource = GitHubProjectsTaskSource(token, projectId)
+        projectItems = taskSource.list_work_items()
 
         schedule_start = date.today()
         schedule_end = schedule_start + timedelta(days=2)

@@ -1,10 +1,19 @@
+from typing import Iterable, List, Optional
+
 import requests
+
+from .providers.task_source import TaskSource
 from .utils.utils import parse_response_to_list
 from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
 from .errors import IntegrationError
+from .dtos.work_item import WorkItem
 
 
 url = "https://api.github.com/graphql"
+
+# The query below requests a single page of 100 items with no pagination. A board with more than
+# 100 items will silently lose the overflow. Revisit if boards regularly exceed this size.
+PAGE_SIZE = 100
 
 
 def get_github_auth(settings: Settings | None = None):
@@ -22,7 +31,7 @@ def get_github_query(projectID):
     query{{
     node(id: "{projectID}") {{
         ... on ProjectV2 {{
-            items(first: 100) {{
+            items(first: {PAGE_SIZE}) {{
             nodes{{
                 id
                 fieldValues(first: 100) {{
@@ -114,3 +123,16 @@ def get_github_project_items(token, projectID):
             f"Failed to fetch project items from GitHub: {e}",
             hint="Check your network connection and that GITHUB_TOKEN has access to the project.",
         ) from e
+
+
+class GitHubProjectsTaskSource(TaskSource):
+    def __init__(self, token: str, project_id: str):
+        self.token = token
+        self.project_id = project_id
+
+    def list_work_items(self, statuses: Optional[Iterable[str]] = None) -> List[WorkItem]:
+        items = get_github_project_items(self.token, self.project_id)
+        if statuses is None:
+            return items
+        wanted = set(statuses)
+        return [item for item in items if item.status in wanted]
