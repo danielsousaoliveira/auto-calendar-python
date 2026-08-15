@@ -19,18 +19,16 @@ $ uv sync --locked
 
 ## Run
 
-1. Copy `auth/credentials.example.json` to `auth/credentials.json` and fill it in with your Google OAuth client credentials (downloaded from the Google Cloud Console).
+1. Put your Google OAuth client credentials in the platform configuration directory as `credentials.json` (downloaded from the Google Cloud Console). Set `CAL_AUTO_CONFIG_DIR` to choose a different directory; the default is `%APPDATA%\\cal-auto-python` on Windows, `$XDG_CONFIG_HOME/cal-auto-python` when `XDG_CONFIG_HOME` is set, or `~/.config/cal-auto-python` on Unix.
 
-2. Copy `auth/ghub.example.json` to `auth/ghub.json` and fill it in with your GitHub token and project ID:
+2. Set the GitHub token and project ID as environment variables:
 
 ```bash
-{
-    "token": "xxxxxxxxxxx",
-    "project_id": "PVT_xxxxxxxxxx"
-}
+export GITHUB_TOKEN=xxxxxxxxxxx
+export GITHUB_PROJECT_ID=PVT_xxxxxxxxxx
 ```
 
-3. Copy `.env.example` to `.env` and fill in the same GitHub token and project ID if you prefer using environment variables.
+3. Copy `.env.example` to `.env` if you use an environment loader. Configure optional calendar, attendee, timezone, working-hours, and schedulable-status values there.
 
 4. Run the script
 

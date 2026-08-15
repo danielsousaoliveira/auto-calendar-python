@@ -1,25 +1,18 @@
 import requests
-import os
-import json
 from .utils.utils import parse_response_to_list
+from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
 
 
 url = "https://api.github.com/graphql"
 
 
-def get_github_auth():
-
-    authDir = "auth"
-
-    credentialsPath = os.path.join(authDir, "ghub.json")
-
-    if os.path.exists(credentialsPath):
-        with open(credentialsPath, "r") as f:
-            credentials = json.load(f)
-            token = credentials.get("token")
-            projectID = credentials.get("project_id")
-
-    return token, projectID
+def get_github_auth(settings: Settings | None = None):
+    settings = settings or load_settings()
+    legacy = legacy_auth_dir() / "ghub.json"
+    if legacy.exists():
+        warn_legacy_auth(legacy)
+    token, project_id = settings.require_github()
+    return token, project_id
 
 
 def get_github_query(projectID):

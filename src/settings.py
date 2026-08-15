@@ -1,0 +1,92 @@
+"""Application configuration."""
+
+from __future__ import annotations
+
+import os
+import re
+import sys
+import warnings
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class Settings:
+    config_dir: Path
+    google_credentials_file: Path
+    google_token_file: Path
+    github_token: str | None
+    github_project_id: str | None
+    timezone: str
+    working_day_start: str
+    working_day_end: str
+    calendar_id: str
+    task_list_id: str
+    attendees: tuple[str, ...]
+    schedulable_statuses: frozenset[str]
+
+    def require_github(self) -> tuple[str, str]:
+        if not self.github_token or not self.github_project_id:
+            raise ValueError("GitHub integration requires GITHUB_TOKEN and GITHUB_PROJECT_ID")
+        return self.github_token, self.github_project_id
+
+
+def _config_dir(environ: Mapping[str, str]) -> Path:
+    override = environ.get("CAL_AUTO_CONFIG_DIR")
+    if override:
+        path = Path(override).expanduser()
+    elif sys.platform == "win32":
+        path = Path(environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "cal-auto-python"
+    else:
+        path = Path(environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "cal-auto-python"
+    path.mkdir(parents=True, exist_ok=True)
+    if path.stat().st_uid == os.getuid():
+        path.chmod(0o700)
+    return path
+
+
+def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
+    env = os.environ if environ is None else environ
+    config_dir = _config_dir(env)
+    start = env.get("CAL_AUTO_WORKING_DAY_START", "09:00")
+    end = env.get("CAL_AUTO_WORKING_DAY_END", "17:00")
+    time_pattern = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    if not time_pattern.fullmatch(start) or not time_pattern.fullmatch(end):
+        raise ValueError("Working hours must use strict HH:MM values")
+    if start >= end:
+        raise ValueError("Working day start must be earlier than end")
+    attendees = tuple(
+        value.strip() for value in env.get("CAL_AUTO_ATTENDEES", "").split(",") if value.strip()
+    )
+    statuses = frozenset(
+        value.strip()
+        for value in env.get("CAL_AUTO_SCHEDULABLE_STATUSES", "Backlog").split(",")
+        if value.strip()
+    )
+    return Settings(
+        config_dir=config_dir,
+        google_credentials_file=config_dir / "credentials.json",
+        google_token_file=config_dir / "token.json",
+        github_token=env.get("GITHUB_TOKEN"),
+        github_project_id=env.get("GITHUB_PROJECT_ID"),
+        timezone=env.get("CAL_AUTO_TIMEZONE", "Europe/Lisbon"),
+        working_day_start=start,
+        working_day_end=end,
+        calendar_id=env.get("CAL_AUTO_CALENDAR_ID", "primary"),
+        task_list_id=env.get("CAL_AUTO_TASK_LIST_ID", "@default"),
+        attendees=attendees,
+        schedulable_statuses=statuses,
+    )
+
+
+def legacy_auth_dir() -> Path:
+    return Path.cwd() / "auth"
+
+
+def warn_legacy_auth(path: Path) -> None:
+    warnings.warn(
+        f"Credentials found in legacy location {path}; move them to the configured directory.",
+        UserWarning,
+        stacklevel=2,
+    )
