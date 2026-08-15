@@ -46,6 +46,15 @@ def test_load_credentials_rejects_token_readable_by_group(tmp_path):
         load_credentials(settings)
 
 
+def test_load_credentials_reports_a_malformed_token_file_as_an_authorization_error(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    settings.google_token_file.write_text("not json")
+    settings.google_token_file.chmod(0o600)
+
+    with pytest.raises(AuthorizationError, match="could not be read"):
+        load_credentials(settings)
+
+
 def test_authorize_credentials_is_the_only_browser_flow(tmp_path, mocker):
     settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
     settings.google_credentials_file.write_text("credentials")

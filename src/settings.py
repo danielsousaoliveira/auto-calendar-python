@@ -9,6 +9,7 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .errors import ConfigurationError
 
@@ -82,6 +83,13 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             "No timezone configured",
             hint="Set CAL_AUTO_TIMEZONE to an IANA timezone name, e.g. Europe/Lisbon.",
         )
+    try:
+        ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ConfigurationError(
+            f"Unknown timezone: {timezone}",
+            hint="Set CAL_AUTO_TIMEZONE to a valid IANA timezone name, e.g. Europe/Lisbon.",
+        ) from exc
     return Settings(
         config_dir=config_dir,
         google_credentials_file=config_dir / "credentials.json",

@@ -38,7 +38,13 @@ def load_credentials(settings: Settings | None = None):
 
     if token_path.exists():
         _check_token_permissions(token_path)
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        except (ValueError, OSError) as exc:
+            raise AuthorizationError(
+                f"Google token file {token_path} could not be read",
+                hint="Run cal-auto-python authorize to re-authorise the account.",
+            ) from exc
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:

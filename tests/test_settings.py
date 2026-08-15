@@ -33,6 +33,11 @@ def test_missing_timezone_is_rejected_at_load_time(tmp_path):
         load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path)})
 
 
+def test_unknown_timezone_is_rejected_at_load_time(tmp_path):
+    with pytest.raises(ConfigurationError, match="Unknown timezone"):
+        load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "Not/A_Zone"})
+
+
 def test_all_optional_values_are_typed_and_configurable(tmp_path):
     settings = load_settings(
         {
