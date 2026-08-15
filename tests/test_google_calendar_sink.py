@@ -88,6 +88,34 @@ def test_event_to_busy_block_blocks_the_whole_window_for_all_day_events_when_ena
     )
 
 
+def test_event_to_busy_block_matches_a_multi_day_all_day_event_on_a_later_window_day(tmp_path):
+    event = {"summary": "Trip", "start": {"date": "2024-01-02"}, "end": {"date": "2024-01-04"}}
+    multi_day_window = ScheduleWindow(
+        start=datetime(2024, 1, 3, 9, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 3, 17, tzinfo=timezone.utc),
+    )
+
+    block = event_to_busy_block(
+        event, multi_day_window, settings(tmp_path, CAL_AUTO_COUNT_ALL_DAY_EVENTS="true")
+    )
+
+    assert block is not None
+
+
+def test_event_to_busy_block_excludes_the_all_day_event_end_date(tmp_path):
+    event = {"summary": "Holiday", "start": {"date": "2024-01-01"}, "end": {"date": "2024-01-02"}}
+    day_after_window = ScheduleWindow(
+        start=datetime(2024, 1, 2, 9, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 2, 17, tzinfo=timezone.utc),
+    )
+
+    block = event_to_busy_block(
+        event, day_after_window, settings(tmp_path, CAL_AUTO_COUNT_ALL_DAY_EVENTS="true")
+    )
+
+    assert block is None
+
+
 def test_event_color_id_is_deterministic_for_the_same_source_item():
     assert event_color_id("item-1") == event_color_id("item-1")
 
@@ -170,6 +198,23 @@ def test_list_busy_blocks_uses_the_configured_calendar(tmp_path, mocker):
     assert [b.title for b in blocks] == ["Meeting"]
     _, kwargs = service.events.return_value.list.call_args
     assert kwargs["calendarId"] == "work"
+
+
+def test_list_events_follows_pagination_across_multiple_pages(tmp_path, mocker):
+    service = mocker.Mock()
+    service.events.return_value.list.return_value.execute.side_effect = [
+        {"items": [{"summary": "First"}], "nextPageToken": "page-2"},
+        {"items": [{"summary": "Second"}]},
+    ]
+    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+
+    events = sink.list_events(window())
+
+    assert [e["summary"] for e in events] == ["First", "Second"]
+    page_tokens = [
+        call.kwargs["pageToken"] for call in service.events.return_value.list.call_args_list
+    ]
+    assert page_tokens == [None, "page-2"]
 
 
 def test_create_event_inserts_into_the_configured_calendar(tmp_path, mocker):

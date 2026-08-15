@@ -27,14 +27,15 @@ def event_to_busy_block(
     if "dateTime" not in start or "dateTime" not in end:
         if not settings.count_all_day_events:
             return None
-        event_date = start.get("date")
-        if event_date is None:
+        event_start_date = start.get("date")
+        event_end_date = end.get("date")
+        if event_start_date is None or event_end_date is None:
             return None
-        if not (
-            window.start.date()
-            <= datetime.strptime(event_date, "%Y-%m-%d").date()
-            <= window.end.date()
-        ):
+        # Google's all-day "end.date" is exclusive: an event spanning Jan 1-3 has
+        # start.date=2024-01-01, end.date=2024-01-03 and does not occupy Jan 3.
+        span_start = datetime.strptime(event_start_date, "%Y-%m-%d").date()
+        span_end = datetime.strptime(event_end_date, "%Y-%m-%d").date()
+        if span_start > window.end.date() or span_end <= window.start.date():
             return None
         return ScheduledBlock(
             title=cast(str, event.get("summary", "")),
@@ -114,18 +115,25 @@ class GoogleCalendarSink(CalendarSink):
     def list_events(self, window: ScheduleWindow) -> List[dict]:
         time_min = window.start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         time_max = window.end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-        result = (
-            self.calendar_service.events()
-            .list(
-                calendarId=self.settings.calendar_id,
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=100,
-                singleEvents=True,
+        items: List[dict] = []
+        page_token = None
+        while True:
+            result = (
+                self.calendar_service.events()
+                .list(
+                    calendarId=self.settings.calendar_id,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=100,
+                    singleEvents=True,
+                    pageToken=page_token,
+                )
+                .execute()
             )
-            .execute()
-        )
-        return result.get("items", [])
+            items.extend(result.get("items", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                return items
 
     def list_busy_blocks(self, window: ScheduleWindow) -> List[ScheduledBlock]:
         blocks = [
