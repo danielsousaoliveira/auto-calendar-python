@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
-from .work_item import Priority, Size
+from .work_item import Priority, Size, WorkItem
 
 
-@dataclass
+@dataclass(frozen=True)
 class ScheduleWindow:
     start: datetime
     end: datetime
@@ -24,4 +24,22 @@ class ScheduledBlock:
     tasks: Optional[List[str]] = None
 
 
-SchedulePlan = List[ScheduledBlock]
+@dataclass(frozen=True)
+class UnscheduledItem:
+    work_item: WorkItem
+    reason: str
+
+
+@dataclass(frozen=True)
+class SchedulePlan:
+    scheduled: List[ScheduledBlock]
+    unscheduled: List[UnscheduledItem]
+    window: ScheduleWindow
+
+    @property
+    def scheduled_blocks(self) -> List[ScheduledBlock]:
+        return self.scheduled
+
+    @property
+    def unscheduled_items(self) -> List[UnscheduledItem]:
+        return self.unscheduled
