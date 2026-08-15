@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from src.settings import load_settings

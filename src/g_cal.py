@@ -55,7 +55,7 @@ def list_all_google_events(service, settings: Settings | None = None):
     settings = settings or load_settings()
 
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    print(f"Getting the upcoming 100 events")
+    print("Getting the upcoming 100 events")
     eventsResult = (
         service.events()
         .list(
