@@ -165,8 +165,15 @@ projectItems.*
 events.*
 .vscode
 .vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
 auth/*
 !auth/*.example.json
+auth/credentials.json
+auth/ghub.json
+auth/token.json
 raw/
 CLAUDE.md
 AGENTS.md
