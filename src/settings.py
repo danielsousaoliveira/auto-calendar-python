@@ -10,6 +10,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from .errors import ConfigurationError
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -28,7 +30,10 @@ class Settings:
 
     def require_github(self) -> tuple[str, str]:
         if not self.github_token or not self.github_project_id:
-            raise ValueError("GitHub integration requires GITHUB_TOKEN and GITHUB_PROJECT_ID")
+            raise ConfigurationError(
+                "GitHub integration is not configured",
+                hint="Set the GITHUB_TOKEN and GITHUB_PROJECT_ID environment variables.",
+            )
         return self.github_token, self.github_project_id
 
 

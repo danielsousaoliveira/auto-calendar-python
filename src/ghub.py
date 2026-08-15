@@ -1,6 +1,7 @@
 import requests
 from .utils.utils import parse_response_to_list
 from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
+from .errors import IntegrationError
 
 
 url = "https://api.github.com/graphql"
@@ -101,12 +102,13 @@ def get_github_project_items(token, projectID):
         response = requests.post(url, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
-        projectItems = parse_response_to_list(data)
-        return projectItems
+        return parse_response_to_list(data)
 
     except requests.exceptions.RequestException as e:
-        print("Error:", e)
-        return None
+        raise IntegrationError(
+            f"Failed to fetch project items from GitHub: {e}",
+            hint="Check your network connection and that GITHUB_TOKEN has access to the project.",
+        ) from e
 
 
 def display_github_project_items(projectItems):
