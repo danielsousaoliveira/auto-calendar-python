@@ -107,9 +107,3 @@ def get_github_project_items(token, projectID):
     except requests.exceptions.RequestException as e:
         print("Error:", e)
         return None
-
-
-def display_github_project_items(projectItems):
-    for item in projectItems:
-        item.display()
-        print("\n")
