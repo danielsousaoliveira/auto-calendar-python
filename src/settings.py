@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,7 +32,7 @@ class Settings:
         return self.github_token, self.github_project_id
 
 
-def _config_dir(environ: dict[str, str]) -> Path:
+def _config_dir(environ: Mapping[str, str]) -> Path:
     override = environ.get("CAL_AUTO_CONFIG_DIR")
     if override:
         path = Path(override).expanduser()
@@ -45,7 +46,7 @@ def _config_dir(environ: dict[str, str]) -> Path:
     return path
 
 
-def load_settings(environ: dict[str, str] | None = None) -> Settings:
+def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if environ is None else environ
     config_dir = _config_dir(env)
     start = env.get("CAL_AUTO_WORKING_DAY_START", "09:00")

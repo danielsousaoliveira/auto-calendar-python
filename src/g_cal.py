@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os.path
+from typing import Any, cast
 from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
 
 from google.auth.transport.requests import Request
@@ -103,7 +104,7 @@ def insert_google_task(service, task, settings: Settings | None = None):
 def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
     tasks = []
 
-    for t in projectItem.tasks:
+    for t in projectItem.tasks or []:
         kind = "tasks#task"
         status = "needsAction"
         notes = f"Event: {projectItem.title}"
@@ -114,7 +115,7 @@ def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
                 title=t,
                 notes=notes,
                 status=status,
-                due=projectItem.endDate.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                due=cast(datetime, projectItem.endDate).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
             )
         )
 
@@ -129,10 +130,10 @@ def create_event_to_insert_from_project_item(
     attendees = [{"email": email} for email in settings.attendees]
     colorId = str(random.randint(1, 11))
     notes = f"Priority: {projectItem.priority} | Status: {projectItem.status} | Size {projectItem.size} | Estimate: {projectItem.estimate}"
-    startDate = projectItem.startDate.strftime("%Y-%m-%dT%H:%M:%S")
-    endDate = projectItem.endDate.strftime("%Y-%m-%dT%H:%M:%S")
+    startDate = cast(datetime, projectItem.startDate).strftime("%Y-%m-%dT%H:%M:%S")
+    endDate = cast(datetime, projectItem.endDate).strftime("%Y-%m-%dT%H:%M:%S")
     return EventDTO(
-        summary=projectItem.title,
+        summary=cast(str, projectItem.title),
         start={"dateTime": startDate, "timeZone": settings.timezone},
         end={"dateTime": endDate, "timeZone": settings.timezone},
         attendees=attendees,
@@ -174,12 +175,18 @@ def schedule_events_from_project_items(
                 and datetime.fromisoformat(event["end"]["dateTime"]) >= dayStart
             ):
                 filteredEvent = ProjectItemDTO(
-                    title=event["summary"],
-                    startDate=datetime.fromisoformat(event["start"]["dateTime"]).replace(
-                        tzinfo=timezone.utc
+                    title=cast(str, event["summary"]),
+                    startDate=cast(
+                        Any,
+                        datetime.fromisoformat(event["start"]["dateTime"]).replace(
+                            tzinfo=timezone.utc
+                        ),
                     ),
-                    endDate=datetime.fromisoformat(event["end"]["dateTime"]).replace(
-                        tzinfo=timezone.utc
+                    endDate=cast(
+                        Any,
+                        datetime.fromisoformat(event["end"]["dateTime"]).replace(
+                            tzinfo=timezone.utc
+                        ),
                     ),
                     priority=None,
                     size=None,
@@ -221,8 +228,8 @@ def schedule_events_from_project_items(
             if taskStart and taskEnd:
                 scheduledTask = ProjectItemDTO(
                     title=task.title,
-                    startDate=taskStart,
-                    endDate=taskEnd,
+                    startDate=cast(Any, taskStart),
+                    endDate=cast(Any, taskEnd),
                     priority=task.priority,
                     size=task.size,
                     estimate=task.estimate,
@@ -233,7 +240,7 @@ def schedule_events_from_project_items(
                 duration = (taskEnd - taskStart).total_seconds() / 3600
                 scheduledTasks.append(scheduledTask)
                 scheduledEvents.append(scheduledTask)
-                scheduledEvents.sort(key=lambda x: x.startDate)
+                scheduledEvents.sort(key=lambda x: cast(datetime, x.startDate))
                 if task.estimate > duration:
                     task.estimate -= duration
                 else:
