@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os.path
+from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -14,15 +15,14 @@ import random
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/tasks"]
 
-def authenticate():
+def authenticate(settings: Settings | None = None):
+    settings = settings or load_settings()
     creds = None
-    authDir = "auth"
-
-    if not os.path.exists(authDir):
-        os.makedirs(authDir)
-
-    tokenPath = os.path.join(authDir, "token.json")
-    credentialsPath = os.path.join(authDir, "credentials.json")
+    tokenPath = settings.google_token_file
+    credentialsPath = settings.google_credentials_file
+    legacy = legacy_auth_dir()
+    if (legacy / "credentials.json").exists() or (legacy / "token.json").exists():
+        warn_legacy_auth(legacy)
 
     if os.path.exists(tokenPath):
       creds = Credentials.from_authorized_user_file(tokenPath, SCOPES)
@@ -50,14 +50,15 @@ def get_tasks_service(creds: Credentials):
 
 
 
-def list_all_google_events(service):
+def list_all_google_events(service, settings: Settings | None = None):
+    settings = settings or load_settings()
 
     now = datetime.now().isoformat() + "Z"
     print(f"Getting the upcoming 100 events")
     eventsResult = (
         service.events()
         .list(
-            calendarId="primary", timeMin=now, maxResults=100, singleEvents=True
+            calendarId=settings.calendar_id, timeMin=now, maxResults=100, singleEvents=True
         )
         .execute()
     )
@@ -71,9 +72,10 @@ def list_all_google_events(service):
 
     return events
 
-def list_all_google_tasks(service):
+def list_all_google_tasks(service, settings: Settings | None = None):
+    settings = settings or load_settings()
 
-    results = service.tasks().list(tasklist='@default', maxResults=100).execute()
+    results = service.tasks().list(tasklist=settings.task_list_id, maxResults=100).execute()
     items = results.get("items", [])
 
     if not items:
@@ -86,12 +88,14 @@ def list_all_google_tasks(service):
 
     return items
 
-def insert_google_event(service, event):
-    ev = service.events().insert(calendarId="primary", body=event).execute()
+def insert_google_event(service, event, settings: Settings | None = None):
+    settings = settings or load_settings()
+    ev = service.events().insert(calendarId=settings.calendar_id, body=event).execute()
     return ev
 
-def insert_google_task(service, task):
-    ta = service.tasks().insert(tasklist='@default', body=task).execute()
+def insert_google_task(service, task, settings: Settings | None = None):
+    settings = settings or load_settings()
+    ta = service.tasks().insert(tasklist=settings.task_list_id, body=task).execute()
     return ta
 
 def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
@@ -112,23 +116,25 @@ def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
 
     return tasks
 
-def create_event_to_insert_from_project_item(projectItem: ProjectItemDTO):
+def create_event_to_insert_from_project_item(projectItem: ProjectItemDTO, settings: Settings | None = None):
+    settings = settings or load_settings()
  
-    attendees = [{'email': 'danielsousaoliveira77@gmail.com'}]
+    attendees = [{'email': email} for email in settings.attendees]
     colorId = str(random.randint(1,11))
     notes = f"Priority: {projectItem.priority} | Status: {projectItem.status} | Size {projectItem.size} | Estimate: {projectItem.estimate}"
     startDate = projectItem.startDate.strftime("%Y-%m-%dT%H:%M:%S")
     endDate = projectItem.endDate.strftime("%Y-%m-%dT%H:%M:%S")
     return EventDTO(
           summary=projectItem.title,
-          start={'dateTime': startDate, 'timeZone': 'Europe/Lisbon'},
-          end={'dateTime': endDate, 'timeZone': 'Europe/Lisbon'},
+          start={'dateTime': startDate, 'timeZone': settings.timezone},
+          end={'dateTime': endDate, 'timeZone': settings.timezone},
           attendees=attendees,
           colorId=colorId,
           description=notes
       )
 
-def schedule_events_from_project_items(startDate, endDate, startHour, endHour, events, tasks):
+def schedule_events_from_project_items(startDate, endDate, startHour, endHour, events, tasks, settings: Settings | None = None):
+    settings = settings or load_settings()
 
     sizeOrder = {
     'XS': 4,
@@ -138,7 +144,7 @@ def schedule_events_from_project_items(startDate, endDate, startHour, endHour, e
     'XL': 0
     }
 
-    tasks = [task for task in tasks if task.status == 'Backlog']
+    tasks = [task for task in tasks if task.status in settings.schedulable_statuses]
     # Sort tasks by priority: P0 > P1 > P2
     tasks.sort(key=lambda task: (task.priority if task.priority is not None else 'P4', sizeOrder.get(task.size, float('inf'))))
 
