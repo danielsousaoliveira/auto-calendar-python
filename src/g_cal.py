@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os.path
+from typing import cast
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -98,7 +99,7 @@ def insert_google_task(service, task):
 def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
     tasks = []
 
-    for t in projectItem.tasks:
+    for t in projectItem.tasks or []:
         kind = "tasks#task"
         status = "needsAction"
         notes = f"Event: {projectItem.title}"
@@ -109,7 +110,7 @@ def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
                 title=t,
                 notes=notes,
                 status=status,
-                due=projectItem.endDate.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                due=cast(datetime, projectItem.endDate).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
             )
         )
 
@@ -121,10 +122,10 @@ def create_event_to_insert_from_project_item(projectItem: ProjectItemDTO):
     attendees = [{"email": "danielsousaoliveira77@gmail.com"}]
     colorId = str(random.randint(1, 11))
     notes = f"Priority: {projectItem.priority} | Status: {projectItem.status} | Size {projectItem.size} | Estimate: {projectItem.estimate}"
-    startDate = projectItem.startDate.strftime("%Y-%m-%dT%H:%M:%S")
-    endDate = projectItem.endDate.strftime("%Y-%m-%dT%H:%M:%S")
+    startDate = cast(datetime, projectItem.startDate).strftime("%Y-%m-%dT%H:%M:%S")
+    endDate = cast(datetime, projectItem.endDate).strftime("%Y-%m-%dT%H:%M:%S")
     return EventDTO(
-        summary=projectItem.title,
+        summary=cast(str, projectItem.title),
         start={"dateTime": startDate, "timeZone": "Europe/Lisbon"},
         end={"dateTime": endDate, "timeZone": "Europe/Lisbon"},
         attendees=attendees,
