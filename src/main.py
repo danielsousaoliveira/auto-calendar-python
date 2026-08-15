@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from googleapiclient.errors import HttpError
@@ -22,7 +22,7 @@ def main():
         sink = GoogleCalendarSink(calService, taskService, settings)
 
         tz = ZoneInfo(settings.timezone)
-        schedule_start = date.today()
+        schedule_start = datetime.now(tz).date()
         schedule_end = schedule_start + timedelta(days=2)
         window = ScheduleWindow(
             start=datetime.combine(
