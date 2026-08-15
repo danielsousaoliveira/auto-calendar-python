@@ -4,16 +4,14 @@ Automatically schedule tasks from github into google calendar, using Python
 
 ## Setup
 
-1. Clone this repository and create a virtual environment
+1. Clone this repository
 
 ```bash
 $ git clone
 $ cd cal-auto-python
-$ python3 -m venv venv
-$ . venv/bin/activate
 ```
 
-2. Install the pinned dependencies and package
+2. Install the pinned dependencies and package into uv's managed `.venv`
 
 ```bash
 $ uv sync --locked
