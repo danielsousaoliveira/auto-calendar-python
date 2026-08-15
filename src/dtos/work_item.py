@@ -32,6 +32,7 @@ SIZE_DEFAULT_ESTIMATE_HOURS: Dict[Size, float] = {
 @dataclass
 class WorkItem:
     id: Optional[str] = None
+    source: Optional[str] = None
     title: Optional[str] = None
     assignee: Optional[str] = None
     start: Optional[datetime] = None

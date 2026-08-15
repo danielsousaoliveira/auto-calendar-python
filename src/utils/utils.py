@@ -4,13 +4,13 @@ from ..dtos.schedule import ScheduleWindow, ScheduledBlock
 from datetime import datetime, timedelta, timezone
 
 
-def parse_response_to_list(response: dict) -> List[WorkItem]:
+def parse_response_to_list(response: dict, source: str = "github") -> List[WorkItem]:
     projectItems = []
 
     nodes = response.get("data", {}).get("node", {}).get("items", {}).get("nodes", [])
 
     for node in nodes:
-        projectItem = WorkItem(id=node["id"])
+        projectItem = WorkItem(id=node["id"], source=source)
         field_content = node.get("content", {})
         field_nodes = node.get("fieldValues", {}).get("nodes", [])
 
