@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import os.path
 from typing import cast
 from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
@@ -196,6 +197,7 @@ def schedule_events_from_project_items(
 
     scheduledTasks: SchedulePlan = []
     scheduledBlocks: list[ScheduledBlock] = []
+    local_timezone = ZoneInfo(settings.timezone)
     try:
         currentDate = datetime.strptime(startDate, "%Y-%m-%d")
         endDate = datetime.strptime(endDate, "%Y-%m-%d")
@@ -206,25 +208,38 @@ def schedule_events_from_project_items(
         ) from exc
 
     while currentDate <= endDate:
-        dayStart = parse_datetime(currentDate.strftime("%Y-%m-%d"), startHour)
-        dayEnd = parse_datetime(currentDate.strftime("%Y-%m-%d"), endHour)
+        dayStart = parse_datetime(currentDate.strftime("%Y-%m-%d"), startHour, local_timezone)
+        dayEnd = parse_datetime(currentDate.strftime("%Y-%m-%d"), endHour, local_timezone)
         window = ScheduleWindow(start=dayStart, end=dayEnd)
 
         for event in events:
-            if (
-                "dateTime" in event.get("start", {})
-                and "dateTime" in event.get("end", {})
-                and datetime.fromisoformat(event["start"]["dateTime"]) <= dayEnd
-                and datetime.fromisoformat(event["end"]["dateTime"]) >= dayStart
-            ):
+            if "dateTime" not in event.get("start", {}) or "dateTime" not in event.get("end", {}):
+                if settings.count_all_day_events and event.get("start", {}).get(
+                    "date"
+                ) == currentDate.strftime("%Y-%m-%d"):
+                    scheduledBlocks.append(
+                        ScheduledBlock(
+                            title=cast(str, event.get("summary", "")),
+                            start=dayStart,
+                            end=dayEnd,
+                            priority=None,
+                            size=None,
+                            estimate=None,
+                            status="Backlog",
+                            description="",
+                            tasks=[],
+                        )
+                    )
+                continue
+            event_start = datetime.fromisoformat(event["start"]["dateTime"]).astimezone(
+                local_timezone
+            )
+            event_end = datetime.fromisoformat(event["end"]["dateTime"]).astimezone(local_timezone)
+            if event_start <= dayEnd and event_end >= dayStart:
                 filteredEvent = ScheduledBlock(
                     title=cast(str, event["summary"]),
-                    start=datetime.fromisoformat(event["start"]["dateTime"]).replace(
-                        tzinfo=timezone.utc
-                    ),
-                    end=datetime.fromisoformat(event["end"]["dateTime"]).replace(
-                        tzinfo=timezone.utc
-                    ),
+                    start=event_start,
+                    end=event_end,
                     priority=None,
                     size=None,
                     estimate=None,
@@ -235,12 +250,14 @@ def schedule_events_from_project_items(
 
                 scheduledBlocks.append(filteredEvent)
 
+        scheduledBlocks = merge_overlapping_blocks(scheduledBlocks)
+
         largeTaskScheduled = False
 
         while len(tasks) > 0:
             task = tasks[0]
-            assign_estimate_if_missing(task)
-            taskDuration = timedelta(hours=cast(float, task.estimate))
+            remaining_estimate = estimate_for_task(task)
+            taskDuration = timedelta(hours=remaining_estimate)
             switchedTasks = False
             if task.size in [Size.L, Size.XL]:
                 if largeTaskScheduled:
@@ -267,7 +284,7 @@ def schedule_events_from_project_items(
                     end=taskEnd,
                     priority=task.priority,
                     size=task.size,
-                    estimate=task.estimate,
+                    estimate=remaining_estimate,
                     status="Backlog",
                     description=task.description,
                     tasks=task.tasks,
@@ -276,8 +293,8 @@ def schedule_events_from_project_items(
                 scheduledTasks.append(scheduledTask)
                 scheduledBlocks.append(scheduledTask)
                 scheduledBlocks.sort(key=lambda x: x.start)
-                if task.estimate > duration:
-                    task.estimate -= duration
+                if remaining_estimate > duration:
+                    task.estimate = remaining_estimate - duration
                 else:
                     tasks.remove(task)
             else:
@@ -286,3 +303,13 @@ def schedule_events_from_project_items(
         currentDate += timedelta(days=1)
 
     return scheduledTasks
+
+
+def merge_overlapping_blocks(blocks: list[ScheduledBlock]) -> list[ScheduledBlock]:
+    merged: list[ScheduledBlock] = []
+    for block in sorted(blocks, key=lambda item: item.start):
+        if merged and block.start <= merged[-1].end:
+            merged[-1].end = max(merged[-1].end, block.end)
+        else:
+            merged.append(block)
+    return merged

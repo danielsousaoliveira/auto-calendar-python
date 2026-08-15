@@ -129,8 +129,9 @@ def test_scheduler_sorts_existing_commitments_before_finding_slot():
         [backlog("A", estimate=2)],
     )
     assert placements(result) == [
-        ("A", "2024-01-01T09:00:00+00:00", "2024-01-01T11:00:00+00:00")
-    ]  # preserved defect: unsorted commitments make the algorithm choose this gap
+        ("A", "2024-01-01T09:00:00+00:00", "2024-01-01T10:00:00+00:00"),
+        ("A", "2024-01-01T11:00:00+00:00", "2024-01-01T12:00:00+00:00"),
+    ]
 
 
 def test_scheduler_preserves_offset_event_clock_as_utc():
@@ -142,10 +143,7 @@ def test_scheduler_preserves_offset_event_clock_as_utc():
         [event("Meeting", "2024-01-01T10:00:00+01:00", "2024-01-01T12:00:00+01:00")],
         [backlog("A", estimate=2)],
     )
-    assert placements(result) == [
-        ("A", "2024-01-01T09:00:00+00:00", "2024-01-01T10:00:00+00:00"),
-        ("A", "2024-01-01T12:00:00+00:00", "2024-01-01T13:00:00+00:00"),
-    ]  # preserved defect: the offset clock is relabelled UTC instead of converted
+    assert placements(result) == [("A", "2024-01-01T11:00:00+00:00", "2024-01-01T13:00:00+00:00")]
 
 
 @pytest.fixture

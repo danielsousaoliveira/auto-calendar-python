@@ -27,6 +27,7 @@ class Settings:
     task_list_id: str
     attendees: tuple[str, ...]
     schedulable_statuses: frozenset[str]
+    count_all_day_events: bool
 
     def require_github(self) -> tuple[str, str]:
         if not self.github_token or not self.github_project_id:
@@ -88,6 +89,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         task_list_id=env.get("CAL_AUTO_TASK_LIST_ID", "@default"),
         attendees=attendees,
         schedulable_statuses=statuses,
+        count_all_day_events=env.get("CAL_AUTO_COUNT_ALL_DAY_EVENTS", "false").lower() == "true",
     )
 
 

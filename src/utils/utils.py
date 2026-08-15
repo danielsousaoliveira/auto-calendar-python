@@ -2,7 +2,6 @@ from typing import List, Optional
 from ..dtos.work_item import WorkItem, Priority, Size, SIZE_DEFAULT_ESTIMATE_HOURS
 from ..dtos.schedule import ScheduleWindow, ScheduledBlock
 from datetime import datetime, timedelta, timezone
-import pickle
 
 
 def parse_response_to_list(response: dict) -> List[WorkItem]:
@@ -55,12 +54,8 @@ def parse_tracker_date(dateStr: Optional[str]) -> Optional[datetime]:
     return datetime.strptime(dateStr, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
 
-def parse_datetime(dateStr, timeStr):
-    return datetime.strptime(f"{dateStr} {timeStr}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
-
-
-def is_overlap(eventStart, eventEnd, taskStart, taskEnd):
-    return not (taskEnd <= eventStart or taskStart >= eventEnd)
+def parse_datetime(dateStr, timeStr, tz=timezone.utc):
+    return datetime.strptime(f"{dateStr} {timeStr}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
 
 
 def find_next_available_slot(
@@ -88,11 +83,12 @@ def find_next_available_slot(
         return None, None
 
 
-def assign_estimate_if_missing(task: WorkItem):
-    if task.estimate is None:
-        task.estimate = (
-            SIZE_DEFAULT_ESTIMATE_HOURS.get(task.size, 1.0) if task.size is not None else 1.0
-        )
+def estimate_for_task(task: WorkItem):
+    return (
+        task.estimate
+        if task.estimate is not None
+        else (SIZE_DEFAULT_ESTIMATE_HOURS.get(task.size, 1.0) if task.size is not None else 1.0)
+    )
 
 
 def extract_tasks(description: str) -> list:
@@ -105,21 +101,3 @@ def extract_tasks(description: str) -> list:
             tasks.append(task)
 
     return tasks
-
-
-def dump_data_pickle(events, projectItems):
-    with open("events.pkl", "wb") as f:
-        pickle.dump(events, f)
-
-    with open("projectItems.pkl", "wb") as f:
-        pickle.dump(projectItems, f)
-
-
-def load_data_pickle():
-    with open("events.pkl", "rb") as f:
-        events = pickle.load(f)
-
-    with open("projectItems.pkl", "rb") as f:
-        projectItems = pickle.load(f)
-
-    return events, projectItems
