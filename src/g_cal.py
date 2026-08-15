@@ -53,7 +53,7 @@ def get_tasks_service(creds: Credentials):
 def list_all_google_events(service):
 
     now = datetime.now().isoformat() + "Z"
-    print(f"Getting the upcoming 100 events")
+    print("Getting the upcoming 100 events")
     eventsResult = (
         service.events()
         .list(
@@ -222,4 +222,3 @@ def schedule_events_from_project_items(startDate, endDate, startHour, endHour, e
         currentDate += timedelta(days=1)
 
     return scheduledTasks
-
