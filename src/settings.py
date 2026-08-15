@@ -58,9 +58,15 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     end = env.get("CAL_AUTO_WORKING_DAY_END", "17:00")
     time_pattern = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     if not time_pattern.fullmatch(start) or not time_pattern.fullmatch(end):
-        raise ValueError("Working hours must use strict HH:MM values")
+        raise ConfigurationError(
+            "Working hours must use strict HH:MM values",
+            hint="Set CAL_AUTO_WORKING_DAY_START/CAL_AUTO_WORKING_DAY_END to HH:MM, e.g. 09:00.",
+        )
     if start >= end:
-        raise ValueError("Working day start must be earlier than end")
+        raise ConfigurationError(
+            "Working day start must be earlier than end",
+            hint="Adjust CAL_AUTO_WORKING_DAY_START/CAL_AUTO_WORKING_DAY_END so start precedes end.",
+        )
     attendees = tuple(
         value.strip() for value in env.get("CAL_AUTO_ATTENDEES", "").split(",") if value.strip()
     )

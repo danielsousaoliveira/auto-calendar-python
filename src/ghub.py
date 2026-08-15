@@ -102,6 +102,11 @@ def get_github_project_items(token, projectID):
         response = requests.post(url, json={"query": query}, headers=headers)
         response.raise_for_status()
         data = response.json()
+        if data.get("errors"):
+            raise IntegrationError(
+                f"GitHub returned errors for the project query: {data['errors']}",
+                hint="Check that GITHUB_TOKEN has access to GITHUB_PROJECT_ID and the query is valid.",
+            )
         return parse_response_to_list(data)
 
     except requests.exceptions.RequestException as e:

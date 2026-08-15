@@ -8,9 +8,8 @@ from .logger import logger
 
 
 def main():
-    settings = load_settings()
-
     try:
+        settings = load_settings()
         creds = authenticate(settings)
         calService = get_calendar_service(creds)
         taskService = get_tasks_service(creds)

@@ -1,5 +1,5 @@
 import pytest
-from src.errors import ConfigurationError
+from src.errors import ConfigurationError, SchedulingError
 from src.g_cal import *
 from src.settings import load_settings
 
@@ -210,3 +210,17 @@ def test_authenticate_raises_configuration_error_when_credentials_file_missing(t
 
     with pytest.raises(ConfigurationError, match="Missing Google OAuth client file"):
         authenticate(settings)
+
+
+def test_list_all_google_tasks_returns_empty_list_when_no_tasks(mocker):
+    service_mock = mocker.Mock()
+    service_mock.tasks.return_value.list.return_value.execute.return_value = {"items": []}
+
+    items = list_all_google_tasks(service_mock)
+
+    assert items == []
+
+
+def test_scheduler_raises_scheduling_error_on_non_string_date():
+    with pytest.raises(SchedulingError, match="Invalid schedule window"):
+        schedule_events_from_project_items(None, "2024-01-01", "09:00", "17:00", [], [])

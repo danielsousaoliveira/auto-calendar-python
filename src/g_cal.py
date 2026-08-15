@@ -108,7 +108,7 @@ def list_all_google_tasks(service, settings: Settings | None = None):
 
     if not items:
         logger.info("No tasks found.")
-        return
+        return items
 
     logger.info("Tasks:")
     for item in items:
@@ -192,7 +192,7 @@ def schedule_events_from_project_items(
     try:
         currentDate = datetime.strptime(startDate, "%Y-%m-%d")
         endDate = datetime.strptime(endDate, "%Y-%m-%d")
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise SchedulingError(
             f"Invalid schedule window: {exc}",
             hint="Provide startDate/endDate as YYYY-MM-DD strings.",
