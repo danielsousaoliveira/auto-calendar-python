@@ -1,37 +1,17 @@
-from typing import List
-from dataclasses import asdict
-from ..dtos.project_item import ProjectItemDTO
-from datetime import datetime, timezone
+from typing import List, Optional
+from ..dtos.work_item import WorkItem, Priority, Size, SIZE_DEFAULT_ESTIMATE_HOURS
+from ..dtos.schedule import ScheduleWindow, ScheduledBlock
+from datetime import datetime, timedelta, timezone
 import pickle
 
 
-def dataclass_to_dict(obj):
-    if hasattr(obj, "__dataclass_fields__"):
-        result = asdict(obj)
-        for key, value in result.items():
-            if isinstance(value, list):
-                result[key] = [
-                    dataclass_to_dict(item) if hasattr(item, "__dataclass_fields__") else item
-                    for item in value
-                ]
-            elif isinstance(value, dict):
-                result[key] = {
-                    k: dataclass_to_dict(v) if hasattr(v, "__dataclass_fields__") else v
-                    for k, v in value.items()
-                }
-            elif hasattr(value, "__dataclass_fields__"):
-                result[key] = dataclass_to_dict(value)
-        return result
-    return obj
-
-
-def parse_response_to_list(response: dict) -> List[ProjectItemDTO]:
+def parse_response_to_list(response: dict) -> List[WorkItem]:
     projectItems = []
 
     nodes = response.get("data", {}).get("node", {}).get("items", {}).get("nodes", [])
 
     for node in nodes:
-        projectItem = ProjectItemDTO(id=node["id"])
+        projectItem = WorkItem(id=node["id"])
         field_content = node.get("content", {})
         field_nodes = node.get("fieldValues", {}).get("nodes", [])
 
@@ -41,15 +21,15 @@ def parse_response_to_list(response: dict) -> List[ProjectItemDTO]:
             if field_name == "Title":
                 projectItem.title = field.get("text")
             elif field_name == "Start date":
-                projectItem.startDate = field.get("date")
+                projectItem.start = parse_tracker_date(field.get("date"))
             elif field_name == "End date":
-                projectItem.endDate = field.get("date")
+                projectItem.end = parse_tracker_date(field.get("date"))
             elif field_name == "Priority":
-                projectItem.priority = field.get("name")
+                projectItem.priority = Priority[field.get("name")]
             elif field_name == "Status":
                 projectItem.status = field.get("name")
             elif field_name == "Size":
-                projectItem.size = field.get("name")
+                projectItem.size = Size[field.get("name")]
             elif field.get("number"):
                 projectItem.estimate = field.get("number")
 
@@ -69,6 +49,12 @@ def parse_response_to_list(response: dict) -> List[ProjectItemDTO]:
     return projectItems
 
 
+def parse_tracker_date(dateStr: Optional[str]) -> Optional[datetime]:
+    if dateStr is None:
+        return None
+    return datetime.strptime(dateStr, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+
 def parse_datetime(dateStr, timeStr):
     return datetime.strptime(f"{dateStr} {timeStr}", "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
 
@@ -77,33 +63,36 @@ def is_overlap(eventStart, eventEnd, taskStart, taskEnd):
     return not (taskEnd <= eventStart or taskStart >= eventEnd)
 
 
-def find_next_available_slot(day_start, day_end, task_duration, scheduled_events):
-    current_start = day_start
+def find_next_available_slot(
+    window: ScheduleWindow, task_duration: timedelta, scheduled_blocks: List[ScheduledBlock]
+):
+    current_start = window.start
 
-    for event in scheduled_events:
-        event_start = event.startDate
-        event_end = event.endDate
+    for block in scheduled_blocks:
+        block_start = block.start
+        block_end = block.end
 
-        if current_start + task_duration <= event_start:
+        if current_start + task_duration <= block_start:
             return current_start, current_start + task_duration
-        elif current_start < event_start:
-            time_available = event_start - current_start
+        elif current_start < block_start:
+            time_available = block_start - current_start
             return current_start, current_start + time_available
 
-        current_start = max(current_start, event_end)
+        current_start = max(current_start, block_end)
 
-    if current_start + task_duration <= day_end:
+    if current_start + task_duration <= window.end:
         return current_start, current_start + task_duration
-    elif current_start < day_end:
-        return current_start, day_end
+    elif current_start < window.end:
+        return current_start, window.end
     else:
         return None, None
 
 
-def assign_estimate_if_missing(task):
-    sizeToEstimate = {"XL": 8, "L": 6, "M": 4, "S": 2, "XS": 1}
+def assign_estimate_if_missing(task: WorkItem):
     if task.estimate is None:
-        task.estimate = sizeToEstimate.get(task.size, 1)
+        task.estimate = (
+            SIZE_DEFAULT_ESTIMATE_HOURS.get(task.size, 1.0) if task.size is not None else 1.0
+        )
 
 
 def extract_tasks(description: str) -> list:

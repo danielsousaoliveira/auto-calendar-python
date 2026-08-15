@@ -1,12 +1,17 @@
 import pytest
 from src.errors import ConfigurationError, SchedulingError
 from src.g_cal import *
+from src.dtos.work_item import Priority, Size
 from src.settings import load_settings
 
 
 def backlog(title, size="S", estimate=2, priority="P1"):
-    return ProjectItemDTO(
-        title=title, size=size, estimate=estimate, priority=priority, status="Backlog"
+    return WorkItem(
+        title=title,
+        size=Size[size],
+        estimate=estimate,
+        priority=Priority[priority],
+        status="Backlog",
     )
 
 
@@ -19,7 +24,7 @@ def event(summary, start, end):
 
 
 def placements(tasks):
-    return [(task.title, task.startDate.isoformat(), task.endDate.isoformat()) for task in tasks]
+    return [(task.title, task.start.isoformat(), task.end.isoformat()) for task in tasks]
 
 
 def test_scheduler_leaves_empty_backlog_empty():

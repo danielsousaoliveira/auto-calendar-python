@@ -114,9 +114,3 @@ def get_github_project_items(token, projectID):
             f"Failed to fetch project items from GitHub: {e}",
             hint="Check your network connection and that GITHUB_TOKEN has access to the project.",
         ) from e
-
-
-def display_github_project_items(projectItems):
-    for item in projectItems:
-        item.display()
-        print("\n")

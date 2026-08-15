@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
+
 import pytest
 from src.utils.utils import *
-from src.dtos.project_item import ProjectItemDTO
-from src.dtos.task import TaskDTO, TaskLinkDTO
+from src.dtos.work_item import WorkItem, Priority, Size
 
 
 @pytest.fixture
@@ -23,15 +24,15 @@ def base_response():
                 {"number": 4.0},
             ],
             [{"login": "userA"}],
-            ProjectItemDTO(
+            WorkItem(
                 id="taskA",
                 title="Task A",
                 assignee="userA",
-                startDate="2024-05-01",
-                endDate="2024-05-31",
-                priority="P1",
+                start=datetime(2024, 5, 1, tzinfo=timezone.utc),
+                end=datetime(2024, 5, 31, tzinfo=timezone.utc),
+                priority=Priority.P1,
                 status="Open",
-                size="S",
+                size=Size.S,
                 estimate=4.0,
             ),
         ),
@@ -41,13 +42,13 @@ def base_response():
                 {"name": "P2", "field": {"name": "Priority"}},
             ],
             [],
-            ProjectItemDTO(
+            WorkItem(
                 id="taskB",
                 title="Task B",
                 assignee=None,
-                startDate=None,
-                endDate=None,
-                priority="P2",
+                start=None,
+                end=None,
+                priority=Priority.P2,
                 status=None,
                 size=None,
                 estimate=None,
@@ -59,13 +60,13 @@ def base_response():
                 {"name": "P1", "field": {"name": "Priority"}},
             ],
             [{"login": "userB"}],
-            ProjectItemDTO(
+            WorkItem(
                 id="taskC",
                 title="Task C",
                 assignee="userB",
-                startDate=None,
-                endDate=None,
-                priority="P1",
+                start=None,
+                end=None,
+                priority=Priority.P1,
                 status=None,
                 size=None,
                 estimate=None,
@@ -87,59 +88,3 @@ def test_parse_response_with_param(base_response, fields, assignee, expected):
     assert len(task_items) == 1
     task = task_items[0]
     assert task == expected
-
-
-@pytest.mark.parametrize(
-    "dataclass_obj, expected_dict",
-    [
-        (
-            TaskDTO(
-                kind="task",
-                title="Test Task",
-                notes="These are test notes.",
-                status="completed",
-                due="2024-08-28",
-                completed="2024-08-27",
-                deleted=False,
-                hidden=False,
-                links=[
-                    TaskLinkDTO(
-                        type="related", description="Related task", link="http://example.com"
-                    )
-                ],
-            ),
-            {
-                "kind": "task",
-                "title": "Test Task",
-                "notes": "These are test notes.",
-                "status": "completed",
-                "due": "2024-08-28",
-                "completed": "2024-08-27",
-                "deleted": False,
-                "hidden": False,
-                "links": [
-                    {"type": "related", "description": "Related task", "link": "http://example.com"}
-                ],
-            },
-        ),
-        (
-            TaskDTO(
-                kind="task", title="Empty Links Task", notes="No links provided.", status="pending"
-            ),
-            {
-                "kind": "task",
-                "title": "Empty Links Task",
-                "notes": "No links provided.",
-                "status": "pending",
-                "due": None,
-                "completed": None,
-                "deleted": False,
-                "hidden": False,
-                "links": None,
-            },
-        ),
-    ],
-)
-def test_dataclass_to_dict(dataclass_obj, expected_dict):
-    result = dataclass_to_dict(dataclass_obj)
-    assert result == expected_dict

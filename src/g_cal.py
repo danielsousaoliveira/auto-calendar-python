@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os.path
-from typing import Any, cast
+from typing import cast
 from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
 from .errors import (
     AuthorizationError,
@@ -17,7 +17,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from .dtos.event import EventDTO
 from .dtos.task import TaskDTO
-from .dtos.project_item import ProjectItemDTO
+from .dtos.work_item import WorkItem, Priority, Size
+from .dtos.schedule import ScheduleWindow, ScheduledBlock, SchedulePlan
 from .utils.utils import *
 import random
 
@@ -130,13 +131,13 @@ def insert_google_task(service, task, settings: Settings | None = None):
     return ta
 
 
-def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
+def create_tasks_to_insert_from_project_item(scheduledBlock: ScheduledBlock):
     tasks = []
 
-    for t in projectItem.tasks or []:
+    for t in scheduledBlock.tasks or []:
         kind = "tasks#task"
         status = "needsAction"
-        notes = f"Event: {projectItem.title}"
+        notes = f"Event: {scheduledBlock.title}"
 
         tasks.append(
             TaskDTO(
@@ -144,7 +145,7 @@ def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
                 title=t,
                 notes=notes,
                 status=status,
-                due=cast(datetime, projectItem.endDate).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                due=scheduledBlock.end.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
             )
         )
 
@@ -152,17 +153,19 @@ def create_tasks_to_insert_from_project_item(projectItem: ProjectItemDTO):
 
 
 def create_event_to_insert_from_project_item(
-    projectItem: ProjectItemDTO, settings: Settings | None = None
+    scheduledBlock: ScheduledBlock, settings: Settings | None = None
 ):
     settings = settings or load_settings()
 
     attendees = [{"email": email} for email in settings.attendees]
     colorId = str(random.randint(1, 11))
-    notes = f"Priority: {projectItem.priority} | Status: {projectItem.status} | Size {projectItem.size} | Estimate: {projectItem.estimate}"
-    startDate = cast(datetime, projectItem.startDate).strftime("%Y-%m-%dT%H:%M:%S")
-    endDate = cast(datetime, projectItem.endDate).strftime("%Y-%m-%dT%H:%M:%S")
+    priorityName = scheduledBlock.priority.name if scheduledBlock.priority is not None else None
+    sizeName = scheduledBlock.size.name if scheduledBlock.size is not None else None
+    notes = f"Priority: {priorityName} | Status: {scheduledBlock.status} | Size {sizeName} | Estimate: {scheduledBlock.estimate}"
+    startDate = scheduledBlock.start.strftime("%Y-%m-%dT%H:%M:%S")
+    endDate = scheduledBlock.end.strftime("%Y-%m-%dT%H:%M:%S")
     return EventDTO(
-        summary=cast(str, projectItem.title),
+        summary=scheduledBlock.title,
         start={"dateTime": startDate, "timeZone": settings.timezone},
         end={"dateTime": endDate, "timeZone": settings.timezone},
         attendees=attendees,
@@ -172,23 +175,27 @@ def create_event_to_insert_from_project_item(
 
 
 def schedule_events_from_project_items(
-    startDate, endDate, startHour, endHour, events, tasks, settings: Settings | None = None
-):
+    startDate,
+    endDate,
+    startHour,
+    endHour,
+    events,
+    tasks: list[WorkItem],
+    settings: Settings | None = None,
+) -> SchedulePlan:
     settings = settings or load_settings()
-
-    sizeOrder = {"XS": 4, "S": 3, "M": 2, "L": 1, "XL": 0}
 
     tasks = [task for task in tasks if task.status in settings.schedulable_statuses]
     # Sort tasks by priority: P0 > P1 > P2
     tasks.sort(
         key=lambda task: (
-            task.priority if task.priority is not None else "P4",
-            sizeOrder.get(task.size, float("inf")),
+            task.priority if task.priority is not None else Priority.P4,
+            task.size.value if task.size is not None else float("inf"),
         )
     )
 
-    scheduledTasks = []
-    scheduledEvents = []
+    scheduledTasks: SchedulePlan = []
+    scheduledBlocks: list[ScheduledBlock] = []
     try:
         currentDate = datetime.strptime(startDate, "%Y-%m-%d")
         endDate = datetime.strptime(endDate, "%Y-%m-%d")
@@ -201,6 +208,7 @@ def schedule_events_from_project_items(
     while currentDate <= endDate:
         dayStart = parse_datetime(currentDate.strftime("%Y-%m-%d"), startHour)
         dayEnd = parse_datetime(currentDate.strftime("%Y-%m-%d"), endHour)
+        window = ScheduleWindow(start=dayStart, end=dayEnd)
 
         for event in events:
             if (
@@ -209,19 +217,13 @@ def schedule_events_from_project_items(
                 and datetime.fromisoformat(event["start"]["dateTime"]) <= dayEnd
                 and datetime.fromisoformat(event["end"]["dateTime"]) >= dayStart
             ):
-                filteredEvent = ProjectItemDTO(
+                filteredEvent = ScheduledBlock(
                     title=cast(str, event["summary"]),
-                    startDate=cast(
-                        Any,
-                        datetime.fromisoformat(event["start"]["dateTime"]).replace(
-                            tzinfo=timezone.utc
-                        ),
+                    start=datetime.fromisoformat(event["start"]["dateTime"]).replace(
+                        tzinfo=timezone.utc
                     ),
-                    endDate=cast(
-                        Any,
-                        datetime.fromisoformat(event["end"]["dateTime"]).replace(
-                            tzinfo=timezone.utc
-                        ),
+                    end=datetime.fromisoformat(event["end"]["dateTime"]).replace(
+                        tzinfo=timezone.utc
                     ),
                     priority=None,
                     size=None,
@@ -231,19 +233,19 @@ def schedule_events_from_project_items(
                     tasks=[],
                 )
 
-                scheduledEvents.append(filteredEvent)
+                scheduledBlocks.append(filteredEvent)
 
         largeTaskScheduled = False
 
         while len(tasks) > 0:
             task = tasks[0]
             assign_estimate_if_missing(task)
-            taskDuration = timedelta(hours=task.estimate)
+            taskDuration = timedelta(hours=cast(float, task.estimate))
             switchedTasks = False
-            if task.size in ["L", "XL"]:
+            if task.size in [Size.L, Size.XL]:
                 if largeTaskScheduled:
                     for j in range(1, len(tasks)):
-                        if tasks[j].size in ["XS", "S", "M"]:
+                        if tasks[j].size in [Size.XS, Size.S, Size.M]:
                             smaller_task = tasks.pop(j)
                             tasks.insert(0, smaller_task)
                             switchedTasks = True
@@ -256,15 +258,13 @@ def schedule_events_from_project_items(
                 else:
                     largeTaskScheduled = True
 
-            taskStart, taskEnd = find_next_available_slot(
-                dayStart, dayEnd, taskDuration, scheduledEvents
-            )
+            taskStart, taskEnd = find_next_available_slot(window, taskDuration, scheduledBlocks)
 
             if taskStart and taskEnd:
-                scheduledTask = ProjectItemDTO(
-                    title=task.title,
-                    startDate=cast(Any, taskStart),
-                    endDate=cast(Any, taskEnd),
+                scheduledTask = ScheduledBlock(
+                    title=cast(str, task.title),
+                    start=taskStart,
+                    end=taskEnd,
                     priority=task.priority,
                     size=task.size,
                     estimate=task.estimate,
@@ -274,8 +274,8 @@ def schedule_events_from_project_items(
                 )
                 duration = (taskEnd - taskStart).total_seconds() / 3600
                 scheduledTasks.append(scheduledTask)
-                scheduledEvents.append(scheduledTask)
-                scheduledEvents.sort(key=lambda x: cast(datetime, x.startDate))
+                scheduledBlocks.append(scheduledTask)
+                scheduledBlocks.sort(key=lambda x: x.start)
                 if task.estimate > duration:
                     task.estimate -= duration
                 else:

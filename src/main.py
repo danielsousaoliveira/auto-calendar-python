@@ -18,8 +18,6 @@ def main():
         token, projectId = get_github_auth(settings)
         projectItems = get_github_project_items(token, projectId)
 
-        display_github_project_items(projectItems)
-
         schedule_start = date.today()
         schedule_end = schedule_start + timedelta(days=2)
         scheduledTasks = schedule_events_from_project_items(
@@ -41,7 +39,7 @@ def main():
                 insert_google_task(taskService, t.to_dict(), settings)
 
             logger.info(
-                f"Task '{task.title}' scheduled from {task.startDate} to {task.endDate} with priority {task.priority} and size {task.size}, estimate: {task.estimate} hours."
+                f"Task '{task.title}' scheduled from {task.start} to {task.end} with priority {task.priority} and size {task.size}, estimate: {task.estimate} hours."
             )
 
     except HttpError as error:
