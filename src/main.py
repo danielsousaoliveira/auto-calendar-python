@@ -10,7 +10,7 @@ from .logger import logger
 def main():
     try:
         settings = load_settings()
-        creds = authenticate(settings)
+        creds = load_credentials(settings)
         calService = get_calendar_service(creds)
         taskService = get_tasks_service(creds)
         list_all_google_tasks(taskService, settings)
