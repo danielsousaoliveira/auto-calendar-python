@@ -1,6 +1,7 @@
 import hashlib
+import re
 from datetime import datetime, timezone
-from typing import List, Optional, cast
+from typing import List, Optional, Set, cast
 from zoneinfo import ZoneInfo
 
 from ..dtos.event import EventDTO
@@ -10,6 +11,22 @@ from ..settings import Settings, load_settings
 from .calendar_sink import CalendarSink
 
 EVENT_COLOR_COUNT = 11
+
+TODO_MARKER_PATTERN = re.compile(r"\[auto-calendar:[^:\]]+:[^:\]]+:\d+\]")
+
+
+def todo_marker(source: Optional[str], source_id: Optional[str], index: int) -> Optional[str]:
+    if not source or not source_id:
+        return None
+    return f"[auto-calendar:{source}:{source_id}:{index}]"
+
+
+def block_identity(
+    source: Optional[str], source_id: Optional[str], start: Optional[datetime]
+) -> Optional[str]:
+    if not source or not source_id or start is None:
+        return None
+    return f"{source}:{source_id}:{start.isoformat()}"
 
 
 def event_color_id(source_id: str) -> str:
@@ -75,6 +92,16 @@ def build_event(block: ScheduledBlock, settings: Settings) -> EventDTO:
         f"Priority: {priority_name} | Status: {block.status} | "
         f"Size {size_name} | Estimate: {block.estimate}"
     )
+    extended_properties = None
+    identity = block_identity(block.source, block.source_id, block.start)
+    if identity and block.source and block.source_id:
+        extended_properties = {
+            "private": {
+                "source_system": block.source,
+                "source_id": block.source_id,
+                "auto_calendar_id": identity,
+            }
+        }
     return EventDTO(
         summary=block.title,
         start={
@@ -88,20 +115,27 @@ def build_event(block: ScheduledBlock, settings: Settings) -> EventDTO:
         attendees=attendees or None,
         colorId=event_color_id(block.source_id or block.title),
         description=notes,
+        extendedProperties=extended_properties,
     )
 
 
 def build_todos(block: ScheduledBlock) -> List[TaskDTO]:
-    return [
-        TaskDTO(
-            kind="tasks#task",
-            title=item,
-            notes=f"Event: {block.title}",
-            status="needsAction",
-            due=block.end.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+    todos = []
+    for index, item in enumerate(block.tasks or []):
+        marker = todo_marker(block.source, block.source_id, index)
+        notes = f"Event: {block.title}"
+        if marker:
+            notes = f"{notes} {marker}"
+        todos.append(
+            TaskDTO(
+                kind="tasks#task",
+                title=item,
+                notes=notes,
+                status="needsAction",
+                due=block.end.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+            )
         )
-        for item in block.tasks or []
-    ]
+    return todos
 
 
 class GoogleCalendarSink(CalendarSink):
@@ -160,8 +194,37 @@ class GoogleCalendarSink(CalendarSink):
             .execute()
         )
 
-    def find_existing_event(self, title: str, window: ScheduleWindow) -> Optional[dict]:
-        for event in self.list_events(window):
-            if event.get("summary") == title:
-                return event
-        return None
+    def has_scheduled_event(self, source: str, source_id: str, start: datetime) -> bool:
+        identity = block_identity(source, source_id, start)
+        result = (
+            self.calendar_service.events()
+            .list(
+                calendarId=self.settings.calendar_id,
+                privateExtendedProperty=[f"auto_calendar_id={identity}"],
+                maxResults=1,
+            )
+            .execute()
+        )
+        return bool(result.get("items"))
+
+    def list_scheduled_todo_markers(self) -> Set[str]:
+        markers: Set[str] = set()
+        page_token = None
+        while True:
+            result = (
+                self.tasks_service.tasks()
+                .list(
+                    tasklist=self.settings.task_list_id,
+                    showCompleted=True,
+                    showHidden=True,
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+            for task in result.get("items", []):
+                match = TODO_MARKER_PATTERN.search(task.get("notes") or "")
+                if match:
+                    markers.add(match.group(0))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                return markers

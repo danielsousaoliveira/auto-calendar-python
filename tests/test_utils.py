@@ -26,6 +26,7 @@ def base_response():
             [{"login": "userA"}],
             WorkItem(
                 id="taskA",
+                source="github",
                 title="Task A",
                 assignee="userA",
                 start=datetime(2024, 5, 1, tzinfo=timezone.utc),
@@ -44,6 +45,7 @@ def base_response():
             [],
             WorkItem(
                 id="taskB",
+                source="github",
                 title="Task B",
                 assignee=None,
                 start=None,
@@ -62,6 +64,7 @@ def base_response():
             [{"login": "userB"}],
             WorkItem(
                 id="taskC",
+                source="github",
                 title="Task C",
                 assignee="userB",
                 start=None,

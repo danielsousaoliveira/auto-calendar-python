@@ -87,6 +87,7 @@ def test_get_github_project_items_maps_response_to_work_items(mocker):
     assert items == [
         WorkItem(
             id="item-1",
+            source="github",
             title="Task A",
             assignee="userA",
             priority=Priority.P1,

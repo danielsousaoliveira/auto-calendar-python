@@ -13,6 +13,7 @@ class EventDTO:
     recurrence: Optional[List[str]] = None
     attendees: Optional[List[Dict[str, str]]] = None
     reminders: Optional[Dict[str, Optional[bool]]] = None
+    extendedProperties: Optional[Dict[str, Dict[str, str]]] = None
 
     def __post_init__(self) -> None:
         if not self.summary:

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Set
 
 from ..dtos.event import EventDTO
 from ..dtos.schedule import ScheduleWindow, ScheduledBlock
@@ -20,5 +21,9 @@ class CalendarSink(ABC):
         """Create a to-do item and return the created resource."""
 
     @abstractmethod
-    def find_existing_event(self, title: str, window: ScheduleWindow) -> Optional[dict]:
-        """Look up a previously created event with the given title in the window, if any."""
+    def has_scheduled_event(self, source: str, source_id: str, start: datetime) -> bool:
+        """Return whether an event for this exact scheduled block already exists."""
+
+    @abstractmethod
+    def list_scheduled_todo_markers(self) -> Set[str]:
+        """Return the markers of every to-do already created, fetched once per call."""
