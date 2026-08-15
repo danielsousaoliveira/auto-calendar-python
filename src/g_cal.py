@@ -2,7 +2,15 @@ from datetime import datetime, timedelta, timezone
 import os.path
 from typing import cast
 from .settings import Settings, load_settings, legacy_auth_dir, warn_legacy_auth
+from .errors import (
+    AuthorizationError,
+    AuthorizationExpiredError,
+    ConfigurationError,
+    SchedulingError,
+)
+from .logger import logger
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -32,10 +40,30 @@ def authenticate(settings: Settings | None = None):
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError as exc:
+                raise AuthorizationExpiredError(
+                    "Google authorisation has expired and could not be refreshed",
+                    hint=f"Delete {tokenPath} and rerun to reauthorise.",
+                ) from exc
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(credentialsPath, SCOPES)
-            creds = flow.run_local_server(port=0)
+            if not os.path.exists(credentialsPath):
+                raise ConfigurationError(
+                    f"Missing Google OAuth client file: {credentialsPath}",
+                    hint=(
+                        "Download an OAuth client ID (Desktop app) from the Google Cloud "
+                        f"Console and save it to {credentialsPath}."
+                    ),
+                )
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(credentialsPath, SCOPES)
+                creds = flow.run_local_server(port=0)
+            except Exception as exc:
+                raise AuthorizationError(
+                    "Google Calendar/Tasks authorisation was not completed",
+                    hint="Rerun the tool and grant access in the browser window that opens.",
+                ) from exc
 
         with open(tokenPath, "w", opener=lambda path, flags: os.open(path, flags, 0o600)) as token:
             token.write(creds.to_json())
@@ -56,7 +84,7 @@ def list_all_google_events(service, settings: Settings | None = None):
     settings = settings or load_settings()
 
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    print("Getting the upcoming 100 events")
+    logger.info("Getting the upcoming 100 events")
     eventsResult = (
         service.events()
         .list(calendarId=settings.calendar_id, timeMin=now, maxResults=100, singleEvents=True)
@@ -65,10 +93,10 @@ def list_all_google_events(service, settings: Settings | None = None):
     events = eventsResult.get("items", [])
 
     if not events:
-        print("No upcoming events found.")
+        logger.info("No upcoming events found.")
     for event in events:
         start = event["start"].get("dateTime", event["start"].get("date"))
-        print(f"{event['summary']} ({start})")
+        logger.info(f"{event['summary']} ({start})")
 
     return events
 
@@ -80,12 +108,13 @@ def list_all_google_tasks(service, settings: Settings | None = None):
     items = results.get("items", [])
 
     if not items:
-        print("No tasks found.")
-        return
+        logger.info("No tasks found.")
+        return items
 
-    print("Tasks:")
+    logger.info("Tasks:")
     for item in items:
-        print(f"{item['title']} ({item['id']}) - ({item['due']})")
+        due = item.get("due", "No due date")
+        logger.info(f"{item['title']} ({item['id']}) - ({due})")
 
     return items
 
@@ -167,8 +196,14 @@ def schedule_events_from_project_items(
 
     scheduledTasks: SchedulePlan = []
     scheduledBlocks: list[ScheduledBlock] = []
-    currentDate = datetime.strptime(startDate, "%Y-%m-%d")
-    endDate = datetime.strptime(endDate, "%Y-%m-%d")
+    try:
+        currentDate = datetime.strptime(startDate, "%Y-%m-%d")
+        endDate = datetime.strptime(endDate, "%Y-%m-%d")
+    except (TypeError, ValueError) as exc:
+        raise SchedulingError(
+            f"Invalid schedule window: {exc}",
+            hint="Provide startDate/endDate as YYYY-MM-DD strings.",
+        ) from exc
 
     while currentDate <= endDate:
         dayStart = parse_datetime(currentDate.strftime("%Y-%m-%d"), startHour)
