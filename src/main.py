@@ -8,7 +8,12 @@ from .dtos.schedule import ScheduleWindow
 from .errors import AutoCalendarError
 from .ghub import GitHubProjectsTaskSource, get_github_auth
 from .logger import logger
-from .providers.google_calendar_sink import GoogleCalendarSink, build_event, build_todos
+from .providers.google_calendar_sink import (
+    GoogleCalendarSink,
+    build_event,
+    build_todos,
+    todo_marker,
+)
 from .scheduler import schedule
 from .settings import load_settings
 
@@ -43,13 +48,24 @@ def main():
         projectItems = taskSource.list_work_items()
 
         plan = schedule(projectItems, busy_blocks, window)
+        existing_todo_markers = sink.list_scheduled_todo_markers()
 
         for task in plan.scheduled:
-            event = build_event(task, settings)
-            sink.create_event(event)
+            if not (
+                task.source
+                and task.source_id
+                and sink.has_scheduled_event(task.source, task.source_id)
+            ):
+                event = build_event(task, settings)
+                sink.create_event(event)
 
-            for todo in build_todos(task):
+            for index, todo in enumerate(build_todos(task)):
+                marker = todo_marker(task.source, task.source_id, index)
+                if marker and marker in existing_todo_markers:
+                    continue
                 sink.create_todo(todo)
+                if marker:
+                    existing_todo_markers.add(marker)
 
             logger.info(
                 f"Task '{task.title}' scheduled from {task.start} to {task.end} with priority {task.priority} and size {task.size}, estimate: {task.estimate} hours."

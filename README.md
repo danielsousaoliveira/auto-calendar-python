@@ -41,8 +41,9 @@ $ uv run cal-auto-python
 [x] ~~Retrieve project data from github~~ \
 [x] ~~Add events and tasks to google calendar~~ \
 [x] ~~Schedule based on priority~~ \
+[x] ~~Fix duplicated events and tasks~~ \
 [ ] Optimize event distribution \
-[ ] Fix duplicated events and tasks
+[ ] Update or move an event when the plan changes
 
 ## References
 
