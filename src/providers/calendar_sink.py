@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import List, Set
 
 from ..dtos.event import EventDTO
@@ -20,8 +21,8 @@ class CalendarSink(ABC):
         """Create a to-do item and return the created resource."""
 
     @abstractmethod
-    def has_scheduled_event(self, source: str, source_id: str) -> bool:
-        """Return whether an event for the given source item already exists."""
+    def has_scheduled_event(self, source: str, source_id: str, start: datetime) -> bool:
+        """Return whether an event for this exact scheduled block already exists."""
 
     @abstractmethod
     def list_scheduled_todo_markers(self) -> Set[str]:

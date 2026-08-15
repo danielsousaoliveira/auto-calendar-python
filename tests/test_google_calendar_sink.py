@@ -7,6 +7,7 @@ from src.dtos.schedule import ScheduledBlock, ScheduleWindow
 from src.dtos.task import TaskDTO
 from src.providers.google_calendar_sink import (
     GoogleCalendarSink,
+    block_identity,
     build_event,
     build_todos,
     event_color_id,
@@ -207,7 +208,11 @@ def test_build_event_carries_source_metadata_as_private_extended_properties(tmp_
     dto = build_event(block, settings(tmp_path))
 
     assert dto.to_dict()["extendedProperties"] == {
-        "private": {"source_system": "github", "source_id": "item-1"}
+        "private": {
+            "source_system": "github",
+            "source_id": "item-1",
+            "auto_calendar_id": block_identity("github", "item-1", block.start),
+        }
     }
 
 
@@ -294,18 +299,18 @@ def test_create_todo_inserts_into_the_configured_task_list(tmp_path, mocker):
     assert kwargs["tasklist"] == "tasks"
 
 
-def test_has_scheduled_event_queries_by_private_extended_property(tmp_path, mocker):
+def test_has_scheduled_event_queries_by_a_single_block_identity_property(tmp_path, mocker):
     service = mocker.Mock()
     service.events.return_value.list.return_value.execute.return_value = {
         "items": [{"summary": "A"}]
     }
     sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+    start = datetime(2024, 1, 1, 9, tzinfo=timezone.utc)
 
-    assert sink.has_scheduled_event("github", "item-1") is True
+    assert sink.has_scheduled_event("github", "item-1", start) is True
     _, kwargs = service.events.return_value.list.call_args
     assert kwargs["privateExtendedProperty"] == [
-        "source_system=github",
-        "source_id=item-1",
+        f"auto_calendar_id={block_identity('github', 'item-1', start)}"
     ]
 
 
@@ -314,7 +319,31 @@ def test_has_scheduled_event_is_false_when_no_event_matches(tmp_path, mocker):
     service.events.return_value.list.return_value.execute.return_value = {"items": []}
     sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
 
-    assert sink.has_scheduled_event("github", "item-1") is False
+    assert (
+        sink.has_scheduled_event("github", "item-1", datetime(2024, 1, 1, 9, tzinfo=timezone.utc))
+        is False
+    )
+
+
+def test_has_scheduled_event_does_not_match_a_different_chunk_of_the_same_item(tmp_path, mocker):
+    service = mocker.Mock()
+    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+    day_one = datetime(2024, 1, 1, 9, tzinfo=timezone.utc)
+    day_two = datetime(2024, 1, 2, 9, tzinfo=timezone.utc)
+
+    def list_events(**kwargs):
+        wanted = kwargs["privateExtendedProperty"][0]
+        matches = (
+            [{"summary": "A"}]
+            if wanted == f"auto_calendar_id={block_identity('github', 'item-1', day_one)}"
+            else []
+        )
+        return mocker.Mock(execute=lambda: {"items": matches})
+
+    service.events.return_value.list.side_effect = list_events
+
+    assert sink.has_scheduled_event("github", "item-1", day_one) is True
+    assert sink.has_scheduled_event("github", "item-1", day_two) is False
 
 
 def test_list_scheduled_todo_markers_scans_notes_across_pages(tmp_path, mocker):
@@ -346,16 +375,13 @@ def test_applying_the_same_plan_twice_creates_each_event_and_todo_once(tmp_path,
     created_todos: list = []
 
     def list_events(**kwargs):
-        wanted = set(kwargs.get("privateExtendedProperty") or [])
-        matches = [event for event in created_events if wanted.issubset(set(event))]
+        wanted = kwargs["privateExtendedProperty"][0]
+        matches = [event for event in created_events if event == wanted]
         return mocker.Mock(execute=lambda: {"items": matches})
 
     def insert_event(calendarId, body):
         created_events.append(
-            [
-                f"source_system={body['extendedProperties']['private']['source_system']}",
-                f"source_id={body['extendedProperties']['private']['source_id']}",
-            ]
+            f"auto_calendar_id={body['extendedProperties']['private']['auto_calendar_id']}"
         )
         return mocker.Mock(execute=lambda: body)
 
@@ -383,7 +409,7 @@ def test_applying_the_same_plan_twice_creates_each_event_and_todo_once(tmp_path,
 
     def apply_plan():
         existing_markers = sink.list_scheduled_todo_markers()
-        if not sink.has_scheduled_event(block.source, block.source_id):
+        if not sink.has_scheduled_event(block.source, block.source_id, block.start):
             sink.create_event(build_event(block, settings(tmp_path)))
         for index, todo in enumerate(build_todos(block)):
             marker = todo_marker(block.source, block.source_id, index)

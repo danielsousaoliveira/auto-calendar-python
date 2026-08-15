@@ -21,6 +21,14 @@ def todo_marker(source: Optional[str], source_id: Optional[str], index: int) -> 
     return f"[auto-calendar:{source}:{source_id}:{index}]"
 
 
+def block_identity(
+    source: Optional[str], source_id: Optional[str], start: Optional[datetime]
+) -> Optional[str]:
+    if not source or not source_id or start is None:
+        return None
+    return f"{source}:{source_id}:{start.isoformat()}"
+
+
 def event_color_id(source_id: str) -> str:
     digest = hashlib.sha256(source_id.encode("utf-8")).digest()
     return str((digest[0] % EVENT_COLOR_COUNT) + 1)
@@ -85,9 +93,14 @@ def build_event(block: ScheduledBlock, settings: Settings) -> EventDTO:
         f"Size {size_name} | Estimate: {block.estimate}"
     )
     extended_properties = None
-    if block.source and block.source_id:
+    identity = block_identity(block.source, block.source_id, block.start)
+    if identity and block.source and block.source_id:
         extended_properties = {
-            "private": {"source_system": block.source, "source_id": block.source_id}
+            "private": {
+                "source_system": block.source,
+                "source_id": block.source_id,
+                "auto_calendar_id": identity,
+            }
         }
     return EventDTO(
         summary=block.title,
@@ -181,15 +194,13 @@ class GoogleCalendarSink(CalendarSink):
             .execute()
         )
 
-    def has_scheduled_event(self, source: str, source_id: str) -> bool:
+    def has_scheduled_event(self, source: str, source_id: str, start: datetime) -> bool:
+        identity = block_identity(source, source_id, start)
         result = (
             self.calendar_service.events()
             .list(
                 calendarId=self.settings.calendar_id,
-                privateExtendedProperty=[
-                    f"source_system={source}",
-                    f"source_id={source_id}",
-                ],
+                privateExtendedProperty=[f"auto_calendar_id={identity}"],
                 maxResults=1,
             )
             .execute()

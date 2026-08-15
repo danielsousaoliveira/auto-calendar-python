@@ -54,7 +54,7 @@ def main():
             if not (
                 task.source
                 and task.source_id
-                and sink.has_scheduled_event(task.source, task.source_id)
+                and sink.has_scheduled_event(task.source, task.source_id, task.start)
             ):
                 event = build_event(task, settings)
                 sink.create_event(event)
