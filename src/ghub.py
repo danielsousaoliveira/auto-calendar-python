@@ -6,6 +6,7 @@ from src.utils.utils import parse_response_to_list
 
 url = "https://api.github.com/graphql"
 
+
 def get_github_auth():
 
     authDir = "auth"
@@ -13,12 +14,13 @@ def get_github_auth():
     credentialsPath = os.path.join(authDir, "ghub.json")
 
     if os.path.exists(credentialsPath):
-      with open(credentialsPath, 'r') as f:
-        credentials = json.load(f)
-        token = credentials.get('token')
-        projectID = credentials.get('project_id')
+        with open(credentialsPath, "r") as f:
+            credentials = json.load(f)
+            token = credentials.get("token")
+            projectID = credentials.get("project_id")
 
     return token, projectID
+
 
 def get_github_query(projectID):
 
@@ -91,12 +93,11 @@ def get_github_query(projectID):
     }}
     """
 
+
 def get_github_headers(token):
 
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
 
 def get_github_project_items(token, projectID):
 
@@ -109,10 +110,11 @@ def get_github_project_items(token, projectID):
         data = response.json()
         projectItems = parse_response_to_list(data)
         return projectItems
-        
+
     except requests.exceptions.RequestException as e:
         print("Error:", e)
         return None
+
 
 def display_github_project_items(projectItems):
     for item in projectItems:
