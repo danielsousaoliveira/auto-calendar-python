@@ -168,3 +168,6 @@ events.*
 auth/*
 !auth/*.example.json
 raw/
+CLAUDE.md
+AGENTS.md
+tickets/
