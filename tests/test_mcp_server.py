@@ -61,6 +61,67 @@ async def test_status_tool_reports_configuration_without_secrets(settings):
     assert "token" not in payload
 
 
+def _write_token(settings, **fields):
+    token = {
+        "client_id": "client",
+        "client_secret": "secret",
+        "refresh_token": None,
+        "token": "access-token",
+        "scopes": ["https://www.googleapis.com/auth/calendar"],
+        "expiry": "2099-01-01T00:00:00Z",
+    }
+    token.update(fields)
+    settings.google_token_file.write_text(json.dumps(token))
+
+
+@pytest.mark.anyio
+async def test_status_tool_reports_authorized_for_a_valid_unexpired_token(settings):
+    _write_token(settings)
+
+    async with create_connected_server_and_client_session(
+        build_server(settings)._mcp_server
+    ) as client:
+        result = await client.call_tool("status", {})
+
+    assert result.structuredContent["google_calendar_authorized"] is True
+
+
+@pytest.mark.anyio
+async def test_status_tool_reports_authorized_for_an_expired_but_refreshable_token(settings):
+    _write_token(settings, expiry="2000-01-01T00:00:00Z", refresh_token="refresh")
+
+    async with create_connected_server_and_client_session(
+        build_server(settings)._mcp_server
+    ) as client:
+        result = await client.call_tool("status", {})
+
+    assert result.structuredContent["google_calendar_authorized"] is True
+
+
+@pytest.mark.anyio
+async def test_status_tool_reports_unauthorized_for_an_expired_unrefreshable_token(settings):
+    _write_token(settings, expiry="2000-01-01T00:00:00Z", refresh_token=None)
+
+    async with create_connected_server_and_client_session(
+        build_server(settings)._mcp_server
+    ) as client:
+        result = await client.call_tool("status", {})
+
+    assert result.structuredContent["google_calendar_authorized"] is False
+
+
+@pytest.mark.anyio
+async def test_status_tool_reports_unauthorized_for_a_malformed_token_file(settings):
+    settings.google_token_file.write_text("not json")
+
+    async with create_connected_server_and_client_session(
+        build_server(settings)._mcp_server
+    ) as client:
+        result = await client.call_tool("status", {})
+
+    assert result.structuredContent["google_calendar_authorized"] is False
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
