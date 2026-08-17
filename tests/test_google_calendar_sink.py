@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -118,6 +119,26 @@ def test_event_to_busy_block_excludes_the_all_day_event_end_date(tmp_path):
     assert block is None
 
 
+def test_event_to_busy_block_excludes_an_event_ending_exactly_at_window_start(tmp_path):
+    event = {
+        "summary": "Just before",
+        "start": {"dateTime": "2024-01-01T08:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T09:00:00+00:00"},
+    }
+
+    assert event_to_busy_block(event, window(), settings(tmp_path)) is None
+
+
+def test_event_to_busy_block_excludes_an_event_starting_exactly_at_window_end(tmp_path):
+    event = {
+        "summary": "Just after",
+        "start": {"dateTime": "2024-01-01T17:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T18:00:00+00:00"},
+    }
+
+    assert event_to_busy_block(event, window(), settings(tmp_path)) is None
+
+
 def test_event_color_id_is_deterministic_for_the_same_source_item():
     assert event_color_id("item-1") == event_color_id("item-1")
 
@@ -194,6 +215,20 @@ def test_build_todos_omits_marker_without_a_source_id():
     todos = build_todos(block)
 
     assert todos[0].notes == "Event: A"
+
+
+def test_build_todos_converts_a_non_utc_due_date_to_utc():
+    lisbon = ZoneInfo("Europe/Lisbon")
+    block = ScheduledBlock(
+        title="A",
+        start=datetime(2024, 6, 1, 9, tzinfo=lisbon),
+        end=datetime(2024, 6, 1, 11, tzinfo=lisbon),
+        tasks=["Do X"],
+    )
+
+    todos = build_todos(block)
+
+    assert todos[0].due == "2024-06-01T10:00:00Z"
 
 
 def test_build_event_carries_source_metadata_as_private_extended_properties(tmp_path):

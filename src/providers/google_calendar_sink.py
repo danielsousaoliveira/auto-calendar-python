@@ -63,7 +63,7 @@ def event_to_busy_block(
 
     event_start = datetime.fromisoformat(start["dateTime"]).astimezone(local_timezone)
     event_end = datetime.fromisoformat(end["dateTime"]).astimezone(local_timezone)
-    if event_start > window.end or event_end < window.start:
+    if event_start >= window.end or event_end <= window.start:
         return None
 
     return ScheduledBlock(
@@ -132,7 +132,7 @@ def build_todos(block: ScheduledBlock) -> List[TaskDTO]:
                 title=item,
                 notes=notes,
                 status="needsAction",
-                due=block.end.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                due=block.end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
             )
         )
     return todos

@@ -11,6 +11,7 @@ from .dtos.schedule import ScheduleWindow
 from .errors import AutoCalendarError
 from .ghub import GitHubProjectsTaskSource, get_github_auth
 from .logger import logger
+from .mcp_server import build_server
 from .providers.calendar_sink import CalendarSink
 from .providers.google_calendar_sink import GoogleCalendarSink
 from .providers.task_source import TaskSource
@@ -71,8 +72,10 @@ def run_authorize(args: argparse.Namespace) -> int:
 
 
 def run_server(args: argparse.Namespace) -> int:
-    logger.info("The MCP server is not implemented yet.")
-    return 1
+    settings = load_settings()
+    server = build_server(settings)
+    server.run(transport="stdio")
+    return 0
 
 
 def run_sync_command(args: argparse.Namespace) -> int:
