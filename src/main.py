@@ -1,81 +1,137 @@
+import argparse
+import sys
+from dataclasses import replace
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from googleapiclient.errors import HttpError
 
-from .auth import get_calendar_service, get_tasks_service, load_credentials
+from .auth import authorize_credentials, get_calendar_service, get_tasks_service, load_credentials
 from .dtos.schedule import ScheduleWindow
 from .errors import AutoCalendarError
 from .ghub import GitHubProjectsTaskSource, get_github_auth
 from .logger import logger
-from .providers.google_calendar_sink import (
-    GoogleCalendarSink,
-    build_event,
-    build_todos,
-    todo_marker,
-)
-from .scheduler import schedule
-from .settings import load_settings
+from .providers.calendar_sink import CalendarSink
+from .providers.google_calendar_sink import GoogleCalendarSink
+from .providers.task_source import TaskSource
+from .settings import Settings, load_settings
+from .sync import SyncResult, run_sync
 
 
-def main():
-    try:
-        settings = load_settings()
-        creds = load_credentials(settings)
-        calService = get_calendar_service(creds)
-        taskService = get_tasks_service(creds)
-        sink = GoogleCalendarSink(calService, taskService, settings)
+def build_integrations(settings: Settings) -> tuple[TaskSource, CalendarSink]:
+    creds = load_credentials(settings)
+    calendar_service = get_calendar_service(creds)
+    tasks_service = get_tasks_service(creds)
+    calendar_sink = GoogleCalendarSink(calendar_service, tasks_service, settings)
 
-        tz = ZoneInfo(settings.timezone)
-        schedule_start = datetime.now(tz).date()
-        schedule_end = schedule_start + timedelta(days=2)
-        window = ScheduleWindow(
-            start=datetime.combine(
-                schedule_start,
-                datetime.strptime(settings.working_day_start, "%H:%M").time(),
-                tz,
-            ),
-            end=datetime.combine(
-                schedule_end,
-                datetime.strptime(settings.working_day_end, "%H:%M").time(),
-                tz,
-            ),
+    token, project_id = get_github_auth(settings)
+    task_source = GitHubProjectsTaskSource(token, project_id)
+
+    return task_source, calendar_sink
+
+
+def build_window(
+    settings: Settings, start_date: str | None, end_date: str | None
+) -> ScheduleWindow:
+    tz = ZoneInfo(settings.timezone)
+    start = (
+        datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else datetime.now(tz).date()
+    )
+    end = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else start + timedelta(days=2)
+    return ScheduleWindow(
+        start=datetime.combine(
+            start, datetime.strptime(settings.working_day_start, "%H:%M").time(), tz
+        ),
+        end=datetime.combine(end, datetime.strptime(settings.working_day_end, "%H:%M").time(), tz),
+    )
+
+
+def report_sync_result(result: SyncResult) -> None:
+    for block in result.plan.scheduled:
+        logger.info(
+            f"Task '{block.title}' planned from {block.start} to {block.end} "
+            f"with priority {block.priority} and size {block.size}, estimate: {block.estimate} hours."
         )
-        busy_blocks = sink.list_busy_blocks(window)
+    for item in result.unscheduled:
+        logger.info(f"Could not place '{item.work_item.title}': {item.reason}")
+    if result.applied:
+        for block in result.created:
+            logger.info(f"Created '{block.title}'.")
+        for block in result.skipped:
+            logger.info(f"Skipped '{block.title}': already scheduled.")
+    else:
+        logger.info("Dry run: nothing was written. Pass --apply to create these events.")
 
-        token, projectId = get_github_auth(settings)
-        taskSource = GitHubProjectsTaskSource(token, projectId)
-        projectItems = taskSource.list_work_items()
 
-        plan = schedule(projectItems, busy_blocks, window)
-        existing_todo_markers = sink.list_scheduled_todo_markers()
+def run_authorize(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    authorize_credentials(settings)
+    logger.info("Google Calendar/Tasks authorisation complete.")
+    return 0
 
-        for task in plan.scheduled:
-            if not (
-                task.source
-                and task.source_id
-                and sink.has_scheduled_event(task.source, task.source_id, task.start)
-            ):
-                event = build_event(task, settings)
-                sink.create_event(event)
 
-            for index, todo in enumerate(build_todos(task)):
-                marker = todo_marker(task.source, task.source_id, index)
-                if marker and marker in existing_todo_markers:
-                    continue
-                sink.create_todo(todo)
-                if marker:
-                    existing_todo_markers.add(marker)
+def run_server(args: argparse.Namespace) -> int:
+    logger.info("The MCP server is not implemented yet.")
+    return 1
 
-            logger.info(
-                f"Task '{task.title}' scheduled from {task.start} to {task.end} with priority {task.priority} and size {task.size}, estimate: {task.estimate} hours."
-            )
 
+def run_sync_command(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    overrides = {}
+    if args.working_day_start:
+        overrides["working_day_start"] = args.working_day_start
+    if args.working_day_end:
+        overrides["working_day_end"] = args.working_day_end
+    if overrides:
+        settings = replace(settings, **overrides)
+
+    window = build_window(settings, args.start, args.end)
+    task_source, calendar_sink = build_integrations(settings)
+    result = run_sync(task_source, calendar_sink, window, settings, apply=args.apply)
+    report_sync_result(result)
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="cal-auto-python")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    authorize_parser = subparsers.add_parser(
+        "authorize", help="Run the one-off Google Calendar/Tasks authorisation flow."
+    )
+    authorize_parser.set_defaults(func=run_authorize)
+
+    server_parser = subparsers.add_parser("server", help="Run the MCP server.")
+    server_parser.set_defaults(func=run_server)
+
+    sync_parser = subparsers.add_parser(
+        "sync", help="Fetch work items, plan a schedule, and create calendar events/tasks."
+    )
+    sync_parser.add_argument("--start", help="First day to schedule, as YYYY-MM-DD.")
+    sync_parser.add_argument("--end", help="Last day to schedule, as YYYY-MM-DD.")
+    sync_parser.add_argument("--working-day-start", help="Working day start time, as HH:MM.")
+    sync_parser.add_argument("--working-day-end", help="Working day end time, as HH:MM.")
+    sync_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Create the planned events and tasks. Without this flag, sync only previews the plan.",
+    )
+    sync_parser.set_defaults(func=run_sync_command)
+
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        return args.func(args)
     except HttpError as error:
         logger.error(f"An error occurred: {error}")
     except AutoCalendarError as error:
         logger.error(f"{error.args[0]} Hint: {error.hint}")
+    return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
