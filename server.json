@@ -1,0 +1,89 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-06-18/server.schema.json",
+  "name": "io.github.danielsousaoliveira/cal-auto-python",
+  "description": "Schedule a GitHub Projects backlog into Google Calendar, as a CLI or an MCP server.",
+  "repository": {
+    "url": "https://github.com/danielsousaoliveira/auto-calendar-python",
+    "source": "github"
+  },
+  "version": "0.0.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "cal-auto-python",
+      "version": "0.0.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GITHUB_TOKEN",
+          "description": "GitHub personal access token used to query the GitHub Project.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "GITHUB_PROJECT_ID",
+          "description": "GitHub Projects V2 node ID of the board to read.",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_TIMEZONE",
+          "description": "IANA timezone name used to schedule events, e.g. Europe/Lisbon.",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_CONFIG_DIR",
+          "description": "Directory holding Google OAuth credentials and token. Defaults to the platform config directory.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_WORKING_DAY_START",
+          "description": "Start of the working day as HH:MM. Defaults to 09:00.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_WORKING_DAY_END",
+          "description": "End of the working day as HH:MM. Defaults to 17:00.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_CALENDAR_ID",
+          "description": "Google Calendar ID to schedule events into. Defaults to primary.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_TASK_LIST_ID",
+          "description": "Google Tasks list ID to create tasks in. Defaults to @default.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_ATTENDEES",
+          "description": "Comma-separated email addresses to invite to scheduled events.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_SCHEDULABLE_STATUSES",
+          "description": "Comma-separated GitHub Project status names to schedule. Defaults to Backlog.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "CAL_AUTO_COUNT_ALL_DAY_EVENTS",
+          "description": "Whether all-day events count against free/busy slots. Defaults to false.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

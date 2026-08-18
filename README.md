@@ -1,5 +1,7 @@
 # Automatic Calendar in Python
 
+mcp-name: io.github.danielsousaoliveira/cal-auto-python
+
 Automatically schedule tasks from github into google calendar, using Python
 
 ## Setup
