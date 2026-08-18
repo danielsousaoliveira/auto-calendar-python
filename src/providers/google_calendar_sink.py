@@ -67,11 +67,14 @@ def event_to_busy_block(
     if event_start >= window.end or event_end <= window.start:
         return None
 
+    private = event.get("extendedProperties", {}).get("private", {})
     return ScheduledBlock(
         title=cast(str, event.get("summary", "")),
         start=event_start,
         end=event_end,
         status="Backlog",
+        source=private.get("source_system"),
+        source_id=private.get("source_id"),
     )
 
 
