@@ -30,6 +30,20 @@ def block_identity(
     return f"{source}:{source_id}:{start.isoformat()}"
 
 
+def event_matches_block(event: dict, block: ScheduledBlock) -> bool:
+    start = event.get("start", {}).get("dateTime")
+    end = event.get("end", {}).get("dateTime")
+    if not start or not end:
+        return False
+    event_start = datetime.fromisoformat(start)
+    event_end = datetime.fromisoformat(end)
+    if event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=block.start.tzinfo)
+    if event_end.tzinfo is None:
+        event_end = event_end.replace(tzinfo=block.end.tzinfo)
+    return event_start == block.start and event_end == block.end
+
+
 def event_color_id(source_id: str) -> str:
     digest = hashlib.sha256(source_id.encode("utf-8")).digest()
     return str((digest[0] % EVENT_COLOR_COUNT) + 1)
@@ -273,18 +287,35 @@ class GoogleCalendarSink(CalendarSink):
             .execute()
         )
 
-    def has_scheduled_event(self, source: str, source_id: str, start: datetime) -> bool:
-        identity = block_identity(source, source_id, start)
-        result = (
-            self.calendar_service.events()
-            .list(
-                calendarId=self.settings.calendar_id,
-                privateExtendedProperty=[f"auto_calendar_id={identity}"],
-                maxResults=1,
+    def find_scheduled_events(self, source: str, source_id: str) -> List[dict]:
+        items: List[dict] = []
+        page_token = None
+        while True:
+            result = (
+                self.calendar_service.events()
+                .list(
+                    calendarId=self.settings.calendar_id,
+                    privateExtendedProperty=[
+                        f"source_system={source}",
+                        f"source_id={source_id}",
+                    ],
+                    maxResults=50,
+                    pageToken=page_token,
+                )
+                .execute()
             )
+            items.extend(result.get("items", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+        return sorted(items, key=lambda event: event.get("start", {}).get("dateTime", ""))
+
+    def update_event(self, event_id: str, event: EventDTO) -> dict:
+        return (
+            self.calendar_service.events()
+            .update(calendarId=self.settings.calendar_id, eventId=event_id, body=event.to_dict())
             .execute()
         )
-        return bool(result.get("items"))
 
     def list_scheduled_todo_markers(self) -> Set[str]:
         markers: Set[str] = set()

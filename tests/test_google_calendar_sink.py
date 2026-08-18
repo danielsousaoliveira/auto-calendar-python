@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -12,6 +13,7 @@ from src.providers.google_calendar_sink import (
     build_event,
     build_todos,
     event_color_id,
+    event_matches_block,
     event_to_busy_block,
     event_to_calendar_entry,
     task_to_todo_item,
@@ -336,51 +338,80 @@ def test_create_todo_inserts_into_the_configured_task_list(tmp_path, mocker):
     assert kwargs["tasklist"] == "tasks"
 
 
-def test_has_scheduled_event_queries_by_a_single_block_identity_property(tmp_path, mocker):
+def test_find_scheduled_events_queries_by_source_and_source_id(tmp_path, mocker):
     service = mocker.Mock()
     service.events.return_value.list.return_value.execute.return_value = {
-        "items": [{"summary": "A"}]
+        "items": [
+            {"id": "evt-2", "start": {"dateTime": "2024-01-02T09:00:00+00:00"}},
+            {"id": "evt-1", "start": {"dateTime": "2024-01-01T09:00:00+00:00"}},
+        ]
     }
     sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
-    start = datetime(2024, 1, 1, 9, tzinfo=timezone.utc)
 
-    assert sink.has_scheduled_event("github", "item-1", start) is True
+    events = sink.find_scheduled_events("github", "item-1")
+
     _, kwargs = service.events.return_value.list.call_args
     assert kwargs["privateExtendedProperty"] == [
-        f"auto_calendar_id={block_identity('github', 'item-1', start)}"
+        "source_system=github",
+        "source_id=item-1",
     ]
+    assert [event["id"] for event in events] == ["evt-1", "evt-2"]
 
 
-def test_has_scheduled_event_is_false_when_no_event_matches(tmp_path, mocker):
+def test_find_scheduled_events_paginates_through_all_results(tmp_path, mocker):
     service = mocker.Mock()
-    service.events.return_value.list.return_value.execute.return_value = {"items": []}
+    service.events.return_value.list.return_value.execute.side_effect = [
+        {
+            "items": [{"id": "evt-2", "start": {"dateTime": "2024-01-02T09:00:00+00:00"}}],
+            "nextPageToken": "page-2",
+        },
+        {"items": [{"id": "evt-1", "start": {"dateTime": "2024-01-01T09:00:00+00:00"}}]},
+    ]
     sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
 
-    assert (
-        sink.has_scheduled_event("github", "item-1", datetime(2024, 1, 1, 9, tzinfo=timezone.utc))
-        is False
+    events = sink.find_scheduled_events("github", "item-1")
+
+    assert [event["id"] for event in events] == ["evt-1", "evt-2"]
+    assert service.events.return_value.list.call_count == 2
+
+
+def test_update_event_calls_the_calendar_api_with_the_event_id(tmp_path, mocker):
+    service = mocker.Mock()
+    service.events.return_value.update.return_value.execute.return_value = {"id": "evt-1"}
+    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+    block = ScheduledBlock(
+        title="A",
+        start=datetime(2024, 1, 2, 9, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 2, 11, tzinfo=timezone.utc),
+        source="github",
+        source_id="item-1",
     )
 
+    result = sink.update_event("evt-1", build_event(block, settings(tmp_path)))
 
-def test_has_scheduled_event_does_not_match_a_different_chunk_of_the_same_item(tmp_path, mocker):
-    service = mocker.Mock()
-    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
-    day_one = datetime(2024, 1, 1, 9, tzinfo=timezone.utc)
-    day_two = datetime(2024, 1, 2, 9, tzinfo=timezone.utc)
+    assert result == {"id": "evt-1"}
+    _, kwargs = service.events.return_value.update.call_args
+    assert kwargs["eventId"] == "evt-1"
+    assert kwargs["body"]["start"]["dateTime"] == "2024-01-02T09:00:00"
 
-    def list_events(**kwargs):
-        wanted = kwargs["privateExtendedProperty"][0]
-        matches = (
-            [{"summary": "A"}]
-            if wanted == f"auto_calendar_id={block_identity('github', 'item-1', day_one)}"
-            else []
-        )
-        return mocker.Mock(execute=lambda: {"items": matches})
 
-    service.events.return_value.list.side_effect = list_events
+def test_event_matches_block_compares_start_and_end():
+    block = ScheduledBlock(
+        title="A",
+        start=datetime(2024, 1, 1, 9, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 1, 11, tzinfo=timezone.utc),
+    )
+    matching_event = {
+        "start": {"dateTime": "2024-01-01T09:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T11:00:00+00:00"},
+    }
+    moved_event = {
+        "start": {"dateTime": "2024-01-01T13:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T15:00:00+00:00"},
+    }
 
-    assert sink.has_scheduled_event("github", "item-1", day_one) is True
-    assert sink.has_scheduled_event("github", "item-1", day_two) is False
+    assert event_matches_block(matching_event, block) is True
+    assert event_matches_block(moved_event, block) is False
 
 
 def test_list_scheduled_todo_markers_scans_notes_across_pages(tmp_path, mocker):
@@ -408,19 +439,23 @@ def test_list_scheduled_todo_markers_scans_notes_across_pages(tmp_path, mocker):
 def test_applying_the_same_plan_twice_creates_each_event_and_todo_once(tmp_path, mocker):
     calendar_service = mocker.Mock()
     tasks_service = mocker.Mock()
-    created_events: list = []
+    events_by_id: dict = {}
     created_todos: list = []
+    next_id = [0]
 
     def list_events(**kwargs):
-        wanted = kwargs["privateExtendedProperty"][0]
-        matches = [event for event in created_events if event == wanted]
+        matches = [event for event in events_by_id.values()]
         return mocker.Mock(execute=lambda: {"items": matches})
 
     def insert_event(calendarId, body):
-        created_events.append(
-            f"auto_calendar_id={body['extendedProperties']['private']['auto_calendar_id']}"
-        )
-        return mocker.Mock(execute=lambda: body)
+        next_id[0] += 1
+        event_id = f"evt-{next_id[0]}"
+        events_by_id[event_id] = {"id": event_id, "start": body["start"], "end": body["end"]}
+        return mocker.Mock(execute=lambda: {"id": event_id, **body})
+
+    def update_event(calendarId, eventId, body):
+        events_by_id[eventId] = {"id": eventId, "start": body["start"], "end": body["end"]}
+        return mocker.Mock(execute=lambda: {"id": eventId, **body})
 
     def list_tasks(**kwargs):
         return mocker.Mock(execute=lambda: {"items": [{"notes": t.notes} for t in created_todos]})
@@ -431,6 +466,7 @@ def test_applying_the_same_plan_twice_creates_each_event_and_todo_once(tmp_path,
 
     calendar_service.events.return_value.list.side_effect = list_events
     calendar_service.events.return_value.insert.side_effect = insert_event
+    calendar_service.events.return_value.update.side_effect = update_event
     tasks_service.tasks.return_value.list.side_effect = list_tasks
     tasks_service.tasks.return_value.insert.side_effect = insert_todo
 
@@ -444,21 +480,36 @@ def test_applying_the_same_plan_twice_creates_each_event_and_todo_once(tmp_path,
         source_id="item-1",
     )
 
-    def apply_plan():
+    def apply_plan(plan_block):
         existing_markers = sink.list_scheduled_todo_markers()
-        if not sink.has_scheduled_event(block.source, block.source_id, block.start):
-            sink.create_event(build_event(block, settings(tmp_path)))
-        for index, todo in enumerate(build_todos(block)):
-            marker = todo_marker(block.source, block.source_id, index)
+        matches = sink.find_scheduled_events(plan_block.source, plan_block.source_id)
+        event = build_event(plan_block, settings(tmp_path))
+        if not matches:
+            sink.create_event(event)
+        elif not event_matches_block(matches[0], plan_block):
+            sink.update_event(matches[0]["id"], event)
+        for index, todo in enumerate(build_todos(plan_block)):
+            marker = todo_marker(plan_block.source, plan_block.source_id, index)
             if marker in existing_markers:
                 continue
             sink.create_todo(todo)
 
-    apply_plan()
-    apply_plan()
+    apply_plan(block)
+    apply_plan(block)
 
-    assert len(created_events) == 1
+    assert len(events_by_id) == 1
     assert len(created_todos) == 2
+
+    moved_block = replace(
+        block,
+        start=datetime(2024, 1, 2, 9, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 2, 11, tzinfo=timezone.utc),
+    )
+    apply_plan(moved_block)
+
+    assert len(events_by_id) == 1
+    remaining_event = next(iter(events_by_id.values()))
+    assert remaining_event["start"]["dateTime"] == "2024-01-02T09:00:00"
 
 
 def entries_window():
