@@ -43,6 +43,18 @@ jobs:
       - run: python -m ruff format --check .
       - run: python -m mypy src tests
 
+  registry-manifest:
+    name: Registry manifest version check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python scripts/check_manifest_version.py
+
   package:
     name: Package build and install check
     runs-on: ubuntu-latest
