@@ -287,19 +287,6 @@ class GoogleCalendarSink(CalendarSink):
             .execute()
         )
 
-    def has_scheduled_event(self, source: str, source_id: str, start: datetime) -> bool:
-        identity = block_identity(source, source_id, start)
-        result = (
-            self.calendar_service.events()
-            .list(
-                calendarId=self.settings.calendar_id,
-                privateExtendedProperty=[f"auto_calendar_id={identity}"],
-                maxResults=1,
-            )
-            .execute()
-        )
-        return bool(result.get("items"))
-
     def find_scheduled_events(self, source: str, source_id: str) -> List[dict]:
         items: List[dict] = []
         page_token = None

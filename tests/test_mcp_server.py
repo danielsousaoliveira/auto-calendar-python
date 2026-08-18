@@ -71,9 +71,6 @@ class StubCalendarSink(CalendarSink):
         self.created_todos.append(task)
         return {"id": "todo-1"}
 
-    def has_scheduled_event(self, source, source_id, start):
-        raise NotImplementedError
-
     def find_scheduled_events(self, source, source_id):
         raise NotImplementedError
 
@@ -93,9 +90,6 @@ class SyncCalendarSink(StubCalendarSink):
 
     def list_busy_blocks(self, window):
         return []
-
-    def has_scheduled_event(self, source, source_id, start):
-        return (source, source_id, start) in self.existing
 
     def create_event(self, event):
         self._event_ids += 1
@@ -149,9 +143,6 @@ class FailingCalendarSink(CalendarSink):
         raise NotImplementedError
 
     def create_todo(self, task):
-        raise NotImplementedError
-
-    def has_scheduled_event(self, source, source_id, start):
         raise NotImplementedError
 
     def find_scheduled_events(self, source, source_id):

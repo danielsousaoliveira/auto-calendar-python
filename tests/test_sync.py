@@ -24,11 +24,8 @@ class StubTaskSource(TaskSource):
 
 
 class StubCalendarSink(CalendarSink):
-    def __init__(
-        self, busy_blocks=None, scheduled_identities=None, todo_markers=None, scheduled_events=None
-    ):
+    def __init__(self, busy_blocks=None, todo_markers=None, scheduled_events=None):
         self.busy_blocks = busy_blocks or []
-        self.scheduled_identities = scheduled_identities or set()
         self.todo_markers = set(todo_markers or set())
         self.scheduled_events = scheduled_events or {}
         self.created_events = []
@@ -51,9 +48,6 @@ class StubCalendarSink(CalendarSink):
     def create_todo(self, task):
         self.created_todos.append(task)
         return {}
-
-    def has_scheduled_event(self, source, source_id, start):
-        return (source, source_id, start) in self.scheduled_identities
 
     def find_scheduled_events(self, source, source_id):
         return self.scheduled_events.get((source, source_id), [])
