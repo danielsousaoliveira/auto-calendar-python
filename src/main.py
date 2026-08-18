@@ -6,29 +6,14 @@ from zoneinfo import ZoneInfo
 
 from googleapiclient.errors import HttpError
 
-from .auth import authorize_credentials, get_calendar_service, get_tasks_service, load_credentials
+from .auth import authorize_credentials
 from .dtos.schedule import ScheduleWindow
 from .errors import AutoCalendarError
-from .ghub import GitHubProjectsTaskSource, get_github_auth
+from .integrations import build_integrations
 from .logger import logger
 from .mcp_server import build_server
-from .providers.calendar_sink import CalendarSink
-from .providers.google_calendar_sink import GoogleCalendarSink
-from .providers.task_source import TaskSource
 from .settings import Settings, load_settings
 from .sync import SyncResult, run_sync
-
-
-def build_integrations(settings: Settings) -> tuple[TaskSource, CalendarSink]:
-    creds = load_credentials(settings)
-    calendar_service = get_calendar_service(creds)
-    tasks_service = get_tasks_service(creds)
-    calendar_sink = GoogleCalendarSink(calendar_service, tasks_service, settings)
-
-    token, project_id = get_github_auth(settings)
-    task_source = GitHubProjectsTaskSource(token, project_id)
-
-    return task_source, calendar_sink
 
 
 def build_window(

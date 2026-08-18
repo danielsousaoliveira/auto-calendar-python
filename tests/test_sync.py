@@ -34,6 +34,12 @@ class StubCalendarSink(CalendarSink):
     def list_busy_blocks(self, window):
         return self.busy_blocks
 
+    def list_entries(self, window):
+        return []
+
+    def list_outstanding_todos(self):
+        return []
+
     def create_event(self, event):
         self.created_events.append(event)
         return {}

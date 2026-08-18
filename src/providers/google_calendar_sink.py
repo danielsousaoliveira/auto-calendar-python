@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Set, cast
 from zoneinfo import ZoneInfo
 
+from ..dtos.calendar_entry import CalendarEntryDTO, TodoItemDTO
 from ..dtos.event import EventDTO
 from ..dtos.schedule import ScheduledBlock, ScheduleWindow
 from ..dtos.task import TaskDTO
@@ -72,6 +73,48 @@ def event_to_busy_block(
         end=event_end,
         status="Backlog",
     )
+
+
+def event_to_calendar_entry(
+    event: dict, window: ScheduleWindow, settings: Settings
+) -> Optional[CalendarEntryDTO]:
+    start = event.get("start", {})
+    end = event.get("end", {})
+    local_timezone = ZoneInfo(settings.timezone)
+    title = cast(str, event.get("summary", ""))
+
+    if "dateTime" not in start or "dateTime" not in end:
+        event_start_date = start.get("date")
+        event_end_date = end.get("date")
+        if event_start_date is None or event_end_date is None:
+            return None
+        span_start = datetime.strptime(event_start_date, "%Y-%m-%d").date()
+        span_end = datetime.strptime(event_end_date, "%Y-%m-%d").date()
+        if span_start >= window.end.date() or span_end <= window.start.date():
+            return None
+        return CalendarEntryDTO(
+            title=title,
+            start=datetime.combine(span_start, datetime.min.time(), local_timezone),
+            end=datetime.combine(span_end, datetime.min.time(), local_timezone),
+            all_day=True,
+        )
+
+    event_start = datetime.fromisoformat(start["dateTime"]).astimezone(local_timezone)
+    event_end = datetime.fromisoformat(end["dateTime"]).astimezone(local_timezone)
+    if event_start >= window.end or event_end <= window.start:
+        return None
+
+    return CalendarEntryDTO(title=title, start=event_start, end=event_end, all_day=False)
+
+
+def task_to_todo_item(task: dict) -> Optional[TodoItemDTO]:
+    status = task.get("status", "needsAction")
+    if status == "completed":
+        return None
+    title = task.get("title")
+    if not title:
+        return None
+    return TodoItemDTO(title=title, status=status, notes=task.get("notes"), due=task.get("due"))
 
 
 def _merge_busy_blocks(blocks: List[ScheduledBlock]) -> List[ScheduledBlock]:
@@ -179,6 +222,39 @@ class GoogleCalendarSink(CalendarSink):
             if block is not None
         ]
         return _merge_busy_blocks(blocks)
+
+    def list_entries(self, window: ScheduleWindow) -> List[CalendarEntryDTO]:
+        entries = [
+            entry
+            for entry in (
+                event_to_calendar_entry(event, window, self.settings)
+                for event in self.list_events(window)
+            )
+            if entry is not None
+        ]
+        return sorted(entries, key=lambda entry: entry.start)
+
+    def list_outstanding_todos(self) -> List[TodoItemDTO]:
+        todos: List[TodoItemDTO] = []
+        page_token = None
+        while True:
+            result = (
+                self.tasks_service.tasks()
+                .list(
+                    tasklist=self.settings.task_list_id,
+                    showCompleted=False,
+                    showHidden=False,
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+            for task in result.get("items", []):
+                todo = task_to_todo_item(task)
+                if todo is not None:
+                    todos.append(todo)
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                return todos
 
     def create_event(self, event: EventDTO) -> dict:
         return (

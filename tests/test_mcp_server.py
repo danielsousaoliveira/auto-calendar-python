@@ -2,13 +2,19 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 import pytest
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.shared.memory import create_connected_server_and_client_session
 
+from src.dtos.calendar_entry import CalendarEntryDTO, TodoItemDTO
+from src.dtos.work_item import Priority, Size, WorkItem
+from src.errors import AuthorizationError
 from src.mcp_server import build_server
+from src.providers.calendar_sink import CalendarSink
+from src.providers.task_source import TaskSource
 from src.settings import load_settings
 
 
@@ -22,6 +28,213 @@ def settings(tmp_path):
             "GITHUB_PROJECT_ID": "project",
         }
     )
+
+
+class StubTaskSource(TaskSource):
+    def __init__(self, items):
+        self.items = items
+
+    def list_work_items(self, statuses=None):
+        if statuses is None:
+            return self.items
+        wanted = set(statuses)
+        return [item for item in self.items if item.status in wanted]
+
+
+class StubCalendarSink(CalendarSink):
+    def __init__(self, entries=None, todos=None):
+        self.entries = entries or []
+        self.todos = todos or []
+
+    def list_busy_blocks(self, window):
+        return []
+
+    def list_entries(self, window):
+        return self.entries
+
+    def list_outstanding_todos(self):
+        return self.todos
+
+    def create_event(self, event):
+        raise NotImplementedError
+
+    def create_todo(self, task):
+        raise NotImplementedError
+
+    def has_scheduled_event(self, source, source_id, start):
+        raise NotImplementedError
+
+    def list_scheduled_todo_markers(self):
+        raise NotImplementedError
+
+
+class FailingTaskSource(TaskSource):
+    def list_work_items(self, statuses=None):
+        raise AuthorizationError(
+            "GitHub token is invalid",
+            hint="Run cal-auto-python authorize before starting the server.",
+        )
+
+
+class FailingCalendarSink(CalendarSink):
+    def list_busy_blocks(self, window):
+        raise NotImplementedError
+
+    def list_entries(self, window):
+        raise AuthorizationError(
+            "Google account has not been authorised",
+            hint="Run cal-auto-python authorize before starting the server.",
+        )
+
+    def list_outstanding_todos(self):
+        raise AuthorizationError(
+            "Google account has not been authorised",
+            hint="Run cal-auto-python authorize before starting the server.",
+        )
+
+    def create_event(self, event):
+        raise NotImplementedError
+
+    def create_todo(self, task):
+        raise NotImplementedError
+
+    def has_scheduled_event(self, source, source_id, start):
+        raise NotImplementedError
+
+    def list_scheduled_todo_markers(self):
+        raise NotImplementedError
+
+
+@pytest.mark.anyio
+async def test_list_calendar_entries_returns_structured_entries(settings):
+    calendar_sink = StubCalendarSink(
+        entries=[
+            CalendarEntryDTO(
+                title="Standup",
+                start=datetime(2026, 8, 17, 9, tzinfo=timezone.utc),
+                end=datetime(2026, 8, 17, 9, 30, tzinfo=timezone.utc),
+                all_day=False,
+            )
+        ]
+    )
+    server = build_server(settings, calendar_sink_factory=lambda _settings: calendar_sink)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        tool = next(
+            t for t in (await client.list_tools()).tools if t.name == "list_calendar_entries"
+        )
+        assert tool.annotations.readOnlyHint is True
+
+        result = await client.call_tool(
+            "list_calendar_entries", {"start": "2026-08-17", "end": "2026-08-17"}
+        )
+
+    assert result.structuredContent["entries"] == [
+        {
+            "title": "Standup",
+            "start": "2026-08-17T09:00:00Z",
+            "end": "2026-08-17T09:30:00Z",
+            "all_day": False,
+        }
+    ]
+
+
+@pytest.mark.anyio
+async def test_list_todos_returns_structured_todos(settings):
+    calendar_sink = StubCalendarSink(
+        todos=[TodoItemDTO(title="Write report", status="needsAction", notes="due soon")]
+    )
+    server = build_server(settings, calendar_sink_factory=lambda _settings: calendar_sink)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        tool = next(t for t in (await client.list_tools()).tools if t.name == "list_todos")
+        assert tool.annotations.readOnlyHint is True
+
+        result = await client.call_tool("list_todos", {})
+
+    assert result.structuredContent["todos"] == [
+        {"title": "Write report", "status": "needsAction", "notes": "due soon", "due": None}
+    ]
+
+
+@pytest.mark.anyio
+async def test_list_tracker_items_filters_by_status(settings):
+    task_source = StubTaskSource(
+        [
+            WorkItem(id="1", title="Ship it", status="Backlog", priority=Priority.P1, size=Size.S),
+            WorkItem(id="2", title="Done thing", status="Done"),
+        ]
+    )
+    server = build_server(settings, task_source_factory=lambda _settings: task_source)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        tool = next(t for t in (await client.list_tools()).tools if t.name == "list_tracker_items")
+        assert tool.annotations.readOnlyHint is True
+
+        result = await client.call_tool("list_tracker_items", {"statuses": ["Backlog"]})
+
+    assert [item["title"] for item in result.structuredContent["items"]] == ["Ship it"]
+    assert result.structuredContent["items"][0]["priority"] == "P1"
+
+
+@pytest.mark.anyio
+async def test_list_tracker_items_returns_everything_without_a_status_filter(settings):
+    task_source = StubTaskSource(
+        [
+            WorkItem(id="1", title="Ship it", status="Backlog"),
+            WorkItem(id="2", title="Done thing", status="Done"),
+        ]
+    )
+    server = build_server(settings, task_source_factory=lambda _settings: task_source)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool("list_tracker_items", {})
+
+    assert [item["title"] for item in result.structuredContent["items"]] == [
+        "Ship it",
+        "Done thing",
+    ]
+
+
+@pytest.mark.anyio
+async def test_list_calendar_entries_surfaces_the_authorization_hint_when_unauthorized(settings):
+    server = build_server(settings, calendar_sink_factory=lambda _settings: FailingCalendarSink())
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "list_calendar_entries", {"start": "2026-08-17", "end": "2026-08-17"}
+        )
+
+    assert result.isError is True
+    message = result.content[0].text
+    assert "Google account has not been authorised" in message
+    assert "cal-auto-python authorize" in message
+
+
+@pytest.mark.anyio
+async def test_list_tracker_items_surfaces_the_authorization_hint_when_unauthorized(settings):
+    server = build_server(settings, task_source_factory=lambda _settings: FailingTaskSource())
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool("list_tracker_items", {})
+
+    assert result.isError is True
+    message = result.content[0].text
+    assert "GitHub token is invalid" in message
+    assert "cal-auto-python authorize" in message
+
+
+@pytest.mark.anyio
+async def test_list_calendar_entries_rejects_an_end_date_before_the_start_date(settings):
+    server = build_server(settings, calendar_sink_factory=lambda _settings: StubCalendarSink())
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "list_calendar_entries", {"start": "2026-08-17", "end": "2026-08-16"}
+        )
+
+    assert result.isError is True
+    assert "end date" in result.content[0].text
 
 
 @pytest.mark.anyio
