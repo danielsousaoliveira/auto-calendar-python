@@ -119,6 +119,7 @@ class SyncReport(BaseModel):
     preview: bool
     planned: List[SyncBlock]
     created: List[SyncBlock]
+    updated: List[SyncBlock]
     skipped: List[SyncBlock]
     unscheduled: List[UnplannedItem]
 
@@ -392,6 +393,7 @@ def _sync_report(result: SyncResult, apply: bool) -> SyncReport:
 
     planned = [block(value) for value in result.scheduled]
     created = [block(value) for value in result.created]
+    updated = [block(value) for value in result.updated]
     skipped = [block(value) for value in result.skipped]
     unscheduled = [
         UnplannedItem(title=value.work_item.title or "", reason=value.reason)
@@ -400,6 +402,7 @@ def _sync_report(result: SyncResult, apply: bool) -> SyncReport:
     mode = "Created" if apply else "Planned"
     summary = (
         f"{mode} {len(created) if apply else len(planned)} item(s); "
+        f"moved {len(updated)}; "
         f"skipped {len(skipped)} already present; "
         f"could not place {len(unscheduled)}."
     )
@@ -408,6 +411,7 @@ def _sync_report(result: SyncResult, apply: bool) -> SyncReport:
         preview=not apply,
         planned=planned,
         created=created,
+        updated=updated,
         skipped=skipped,
         unscheduled=unscheduled,
     )

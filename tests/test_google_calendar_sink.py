@@ -12,6 +12,7 @@ from src.providers.google_calendar_sink import (
     build_event,
     build_todos,
     event_color_id,
+    event_matches_block,
     event_to_busy_block,
     event_to_calendar_entry,
     task_to_todo_item,
@@ -381,6 +382,65 @@ def test_has_scheduled_event_does_not_match_a_different_chunk_of_the_same_item(t
 
     assert sink.has_scheduled_event("github", "item-1", day_one) is True
     assert sink.has_scheduled_event("github", "item-1", day_two) is False
+
+
+def test_find_scheduled_events_queries_by_source_and_source_id(tmp_path, mocker):
+    service = mocker.Mock()
+    service.events.return_value.list.return_value.execute.return_value = {
+        "items": [
+            {"id": "evt-2", "start": {"dateTime": "2024-01-02T09:00:00+00:00"}},
+            {"id": "evt-1", "start": {"dateTime": "2024-01-01T09:00:00+00:00"}},
+        ]
+    }
+    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+
+    events = sink.find_scheduled_events("github", "item-1")
+
+    _, kwargs = service.events.return_value.list.call_args
+    assert kwargs["privateExtendedProperty"] == [
+        "source_system=github",
+        "source_id=item-1",
+    ]
+    assert [event["id"] for event in events] == ["evt-1", "evt-2"]
+
+
+def test_update_event_calls_the_calendar_api_with_the_event_id(tmp_path, mocker):
+    service = mocker.Mock()
+    service.events.return_value.update.return_value.execute.return_value = {"id": "evt-1"}
+    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+    block = ScheduledBlock(
+        title="A",
+        start=datetime(2024, 1, 2, 9, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 2, 11, tzinfo=timezone.utc),
+        source="github",
+        source_id="item-1",
+    )
+
+    result = sink.update_event("evt-1", build_event(block, settings(tmp_path)))
+
+    assert result == {"id": "evt-1"}
+    _, kwargs = service.events.return_value.update.call_args
+    assert kwargs["eventId"] == "evt-1"
+    assert kwargs["body"]["start"]["dateTime"] == "2024-01-02T09:00:00"
+
+
+def test_event_matches_block_compares_start_and_end():
+    block = ScheduledBlock(
+        title="A",
+        start=datetime(2024, 1, 1, 9, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 1, 11, tzinfo=timezone.utc),
+    )
+    matching_event = {
+        "start": {"dateTime": "2024-01-01T09:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T11:00:00+00:00"},
+    }
+    moved_event = {
+        "start": {"dateTime": "2024-01-01T13:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T15:00:00+00:00"},
+    }
+
+    assert event_matches_block(matching_event, block) is True
+    assert event_matches_block(moved_event, block) is False
 
 
 def test_list_scheduled_todo_markers_scans_notes_across_pages(tmp_path, mocker):

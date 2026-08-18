@@ -34,5 +34,13 @@ class CalendarSink(ABC):
         """Return whether an event for this exact scheduled block already exists."""
 
     @abstractmethod
+    def find_scheduled_events(self, source: str, source_id: str) -> List[dict]:
+        """Return every managed event for this work item, sorted by start time."""
+
+    @abstractmethod
+    def update_event(self, event_id: str, event: EventDTO) -> dict:
+        """Update an existing calendar event and return the updated resource."""
+
+    @abstractmethod
     def list_scheduled_todo_markers(self) -> Set[str]:
         """Return the markers of every to-do already created, fetched once per call."""

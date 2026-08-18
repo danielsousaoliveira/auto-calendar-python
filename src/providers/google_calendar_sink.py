@@ -30,6 +30,20 @@ def block_identity(
     return f"{source}:{source_id}:{start.isoformat()}"
 
 
+def event_matches_block(event: dict, block: ScheduledBlock) -> bool:
+    start = event.get("start", {}).get("dateTime")
+    end = event.get("end", {}).get("dateTime")
+    if not start or not end:
+        return False
+    event_start = datetime.fromisoformat(start)
+    event_end = datetime.fromisoformat(end)
+    if event_start.tzinfo is None:
+        event_start = event_start.replace(tzinfo=block.start.tzinfo)
+    if event_end.tzinfo is None:
+        event_end = event_end.replace(tzinfo=block.end.tzinfo)
+    return event_start == block.start and event_end == block.end
+
+
 def event_color_id(source_id: str) -> str:
     digest = hashlib.sha256(source_id.encode("utf-8")).digest()
     return str((digest[0] % EVENT_COLOR_COUNT) + 1)
@@ -285,6 +299,29 @@ class GoogleCalendarSink(CalendarSink):
             .execute()
         )
         return bool(result.get("items"))
+
+    def find_scheduled_events(self, source: str, source_id: str) -> List[dict]:
+        result = (
+            self.calendar_service.events()
+            .list(
+                calendarId=self.settings.calendar_id,
+                privateExtendedProperty=[
+                    f"source_system={source}",
+                    f"source_id={source_id}",
+                ],
+                maxResults=50,
+            )
+            .execute()
+        )
+        items = result.get("items", [])
+        return sorted(items, key=lambda event: event.get("start", {}).get("dateTime", ""))
+
+    def update_event(self, event_id: str, event: EventDTO) -> dict:
+        return (
+            self.calendar_service.events()
+            .update(calendarId=self.settings.calendar_id, eventId=event_id, body=event.to_dict())
+            .execute()
+        )
 
     def list_scheduled_todo_markers(self) -> Set[str]:
         markers: Set[str] = set()

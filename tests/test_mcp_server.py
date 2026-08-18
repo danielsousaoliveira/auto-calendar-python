@@ -74,6 +74,12 @@ class StubCalendarSink(CalendarSink):
     def has_scheduled_event(self, source, source_id, start):
         raise NotImplementedError
 
+    def find_scheduled_events(self, source, source_id):
+        raise NotImplementedError
+
+    def update_event(self, event_id, event):
+        raise NotImplementedError
+
     def list_scheduled_todo_markers(self):
         raise NotImplementedError
 
@@ -81,13 +87,35 @@ class StubCalendarSink(CalendarSink):
 class SyncCalendarSink(StubCalendarSink):
     def __init__(self, existing=None):
         super().__init__()
-        self.existing = existing or set()
+        self.existing = existing or {}
+        self.updated_events = []
+        self._event_ids = 0
 
     def list_busy_blocks(self, window):
         return []
 
     def has_scheduled_event(self, source, source_id, start):
         return (source, source_id, start) in self.existing
+
+    def create_event(self, event):
+        self._event_ids += 1
+        event_id = f"event-{self._event_ids}"
+        properties = (event.extendedProperties or {}).get("private", {})
+        source = properties.get("source_system")
+        source_id = properties.get("source_id")
+        if source and source_id:
+            self.existing.setdefault((source, source_id), []).append(
+                {"id": event_id, "start": event.start, "end": event.end}
+            )
+        self.created_events.append(event)
+        return {"id": event_id}
+
+    def find_scheduled_events(self, source, source_id):
+        return self.existing.get((source, source_id), [])
+
+    def update_event(self, event_id, event):
+        self.updated_events.append((event_id, event))
+        return {"id": event_id}
 
     def list_scheduled_todo_markers(self):
         return set()
@@ -124,6 +152,12 @@ class FailingCalendarSink(CalendarSink):
         raise NotImplementedError
 
     def has_scheduled_event(self, source, source_id, start):
+        raise NotImplementedError
+
+    def find_scheduled_events(self, source, source_id):
+        raise NotImplementedError
+
+    def update_event(self, event_id, event):
         raise NotImplementedError
 
     def list_scheduled_todo_markers(self):
@@ -239,8 +273,6 @@ async def test_sync_backlog_applies_and_reports_existing_items(settings):
             "sync_backlog",
             {"start_date": "2026-08-17", "end_date": "2026-08-17", "apply": True},
         )
-        planned = first.structuredContent["planned"][0]
-        sink.existing.add(("github", "1", datetime.fromisoformat(planned["start"])))
         second = await client.call_tool(
             "sync_backlog",
             {"start_date": "2026-08-17", "end_date": "2026-08-17", "apply": True},
