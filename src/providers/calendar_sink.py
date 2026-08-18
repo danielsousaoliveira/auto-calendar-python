@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Set
 
+from ..dtos.calendar_entry import CalendarEntryDTO, TodoItemDTO
 from ..dtos.event import EventDTO
 from ..dtos.schedule import ScheduleWindow, ScheduledBlock
 from ..dtos.task import TaskDTO
@@ -11,6 +12,14 @@ class CalendarSink(ABC):
     @abstractmethod
     def list_busy_blocks(self, window: ScheduleWindow) -> List[ScheduledBlock]:
         """Return the blocks already occupying the given window."""
+
+    @abstractmethod
+    def list_entries(self, window: ScheduleWindow) -> List[CalendarEntryDTO]:
+        """Return every calendar entry within the given window."""
+
+    @abstractmethod
+    def list_outstanding_todos(self) -> List[TodoItemDTO]:
+        """Return to-do items that have not been completed."""
 
     @abstractmethod
     def create_event(self, event: EventDTO) -> dict:
