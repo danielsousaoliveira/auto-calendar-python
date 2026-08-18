@@ -129,8 +129,11 @@ def build_server(
     calendar_sink_factory: Callable[[Settings], CalendarSink] = build_calendar_sink,
     host: str = "127.0.0.1",
     port: int = 8000,
+    version: str | None = None,
 ) -> FastMCP:
     server = FastMCP(SERVER_NAME, host=host, port=port, stateless_http=True)
+    if version is not None:
+        server._mcp_server.version = version
 
     @server.tool(
         name="status",

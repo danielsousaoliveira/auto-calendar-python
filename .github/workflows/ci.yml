@@ -41,3 +41,22 @@ jobs:
       - run: python -m ruff check .
       - run: python -m ruff format --check .
       - run: python -m mypy src tests
+
+  package:
+    name: Package build and install check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - run: python -m venv /tmp/install-check
+      - run: /tmp/install-check/bin/pip install dist/*.whl
+      - run: /tmp/install-check/bin/cal-auto-python --version
+      - run: /tmp/install-check/bin/python scripts/check_installed_package.py

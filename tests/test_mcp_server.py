@@ -187,6 +187,13 @@ async def test_plan_week_works_without_integrations_or_credentials(tmp_path):
     assert not (tmp_path / "credentials.json").exists()
 
 
+def test_build_server_reports_the_given_version_during_the_handshake(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings, version="1.2.3")
+
+    assert server._mcp_server.create_initialization_options().server_version == "1.2.3"
+
+
 @pytest.mark.anyio
 async def test_sync_backlog_previews_without_writing(settings):
     item = WorkItem(

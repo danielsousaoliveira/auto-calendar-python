@@ -2,6 +2,7 @@ import argparse
 import sys
 from dataclasses import replace
 from datetime import datetime, timedelta
+from importlib.metadata import version
 from zoneinfo import ZoneInfo
 
 from googleapiclient.errors import HttpError
@@ -14,6 +15,8 @@ from .logger import logger
 from .mcp_server import build_server
 from .settings import Settings, load_settings
 from .sync import SyncResult, run_sync
+
+PACKAGE_VERSION = version("cal-auto-python")
 
 
 def build_window(
@@ -58,7 +61,7 @@ def run_authorize(args: argparse.Namespace) -> int:
 
 def run_server(args: argparse.Namespace) -> int:
     settings = load_settings()
-    server = build_server(settings, host=args.host, port=args.port)
+    server = build_server(settings, host=args.host, port=args.port, version=PACKAGE_VERSION)
     if args.transport == "http":
         logger.info(
             f"Serving over HTTP on http://{args.host}:{args.port} — single-user, local use only. "
@@ -90,6 +93,7 @@ def run_sync_command(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cal-auto-python")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {PACKAGE_VERSION}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     authorize_parser = subparsers.add_parser(

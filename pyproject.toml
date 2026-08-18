@@ -5,7 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cal-auto-python"
 version = "0.0.1"
+description = "Schedule a GitHub Projects backlog into Google Calendar, as a CLI or an MCP server."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
+keywords = ["mcp", "mcp-server", "google-calendar", "github-projects", "scheduling"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3 :: Only",
+  "Typing :: Typed",
+]
 dependencies = [
   "google-api-python-client",
   "google-auth-httplib2",
@@ -14,8 +28,19 @@ dependencies = [
   "requests",
 ]
 
+[project.urls]
+Homepage = "https://github.com/danielsousaoliveira/auto-calendar-python"
+Source = "https://github.com/danielsousaoliveira/auto-calendar-python"
+Issues = "https://github.com/danielsousaoliveira/auto-calendar-python/issues"
+
 [project.scripts]
 cal-auto-python = "src.main:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+src = ["py.typed"]
 
 [dependency-groups]
 dev = [
@@ -23,6 +48,8 @@ dev = [
   "pytest-mock",
   "ruff",
   "mypy",
+  "build",
+  "twine",
 ]
 
 [tool.ruff]
