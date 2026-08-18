@@ -2,7 +2,7 @@ from dataclasses import replace
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from src.dtos.schedule import ScheduleWindow
+from src.dtos.schedule import ScheduleWindow, ScheduledBlock
 from src.dtos.work_item import Priority, Size, WorkItem
 from src.providers.calendar_sink import CalendarSink
 from src.providers.task_source import TaskSource
@@ -119,6 +119,27 @@ def test_apply_creates_new_items_and_skips_existing():
     assert len(result.skipped) == 1
     assert len(calendar_sink.created_events) == 1
     assert len(calendar_sink.created_todos) == 2
+
+
+def test_apply_skips_existing_event_returned_as_busy_block():
+    item = _work_item("1", "Write docs")
+    existing = StubCalendarSink(
+        busy_blocks=[
+            ScheduledBlock(
+                title=item.title,
+                start=datetime(2026, 8, 17, 9, tzinfo=TZ),
+                end=datetime(2026, 8, 17, 11, tzinfo=TZ),
+                source="github",
+                source_id="1",
+            )
+        ]
+    )
+
+    result = run_sync(StubTaskSource([item]), existing, _window(), _settings(), apply=True)
+
+    assert result.created == []
+    assert len(result.skipped) == 1
+    assert existing.created_events == []
 
 
 def test_unscheduled_items_are_reported():

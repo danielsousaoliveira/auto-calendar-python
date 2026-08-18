@@ -74,6 +74,21 @@ class StubCalendarSink(CalendarSink):
         raise NotImplementedError
 
 
+class SyncCalendarSink(StubCalendarSink):
+    def __init__(self, existing=None):
+        super().__init__()
+        self.existing = existing or set()
+
+    def list_busy_blocks(self, window):
+        return []
+
+    def has_scheduled_event(self, source, source_id, start):
+        return (source, source_id, start) in self.existing
+
+    def list_scheduled_todo_markers(self):
+        return set()
+
+
 class FailingTaskSource(TaskSource):
     def list_work_items(self, statuses=None):
         raise AuthorizationError(
@@ -166,6 +181,63 @@ async def test_plan_week_works_without_integrations_or_credentials(tmp_path):
 
     assert result.structuredContent["scheduled"][0]["title"] == "Write report"
     assert not (tmp_path / "credentials.json").exists()
+
+
+@pytest.mark.anyio
+async def test_sync_backlog_previews_without_writing(settings):
+    item = WorkItem(
+        id="1", source="github", title="Write report", priority=Priority.P1, status="Backlog"
+    )
+    source = StubTaskSource([item])
+    sink = SyncCalendarSink()
+    server = build_server(
+        settings,
+        task_source_factory=lambda _settings: source,
+        calendar_sink_factory=lambda _settings: sink,
+    )
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        tool = next(t for t in (await client.list_tools()).tools if t.name == "sync_backlog")
+        assert tool.annotations.readOnlyHint is False
+        result = await client.call_tool(
+            "sync_backlog", {"start_date": "2026-08-17", "end_date": "2026-08-17"}
+        )
+
+    assert result.structuredContent["preview"] is True
+    assert len(result.structuredContent["planned"]) == 1
+    assert result.structuredContent["created"] == []
+    assert sink.created_events == []
+    assert sink.created_todos == []
+
+
+@pytest.mark.anyio
+async def test_sync_backlog_applies_and_reports_existing_items(settings):
+    item = WorkItem(
+        id="1", source="github", title="Write report", priority=Priority.P1, status="Backlog"
+    )
+    source = StubTaskSource([item])
+    sink = SyncCalendarSink()
+    server = build_server(
+        settings,
+        task_source_factory=lambda _settings: source,
+        calendar_sink_factory=lambda _settings: sink,
+    )
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        first = await client.call_tool(
+            "sync_backlog",
+            {"start_date": "2026-08-17", "end_date": "2026-08-17", "apply": True},
+        )
+        planned = first.structuredContent["planned"][0]
+        sink.existing.add(("github", "1", datetime.fromisoformat(planned["start"])))
+        second = await client.call_tool(
+            "sync_backlog",
+            {"start_date": "2026-08-17", "end_date": "2026-08-17", "apply": True},
+        )
+
+    assert len(first.structuredContent["created"]) == 1
+    assert len(second.structuredContent["skipped"]) == 1
+    assert len(sink.created_events) == 1
 
 
 @pytest.mark.anyio

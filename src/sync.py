@@ -35,10 +35,24 @@ def run_sync(
     work_items = task_source.list_work_items(settings.schedulable_statuses)
     busy_blocks = calendar_sink.list_busy_blocks(window)
 
+    scheduled_items = {
+        (block.source, block.source_id) for block in busy_blocks if block.source and block.source_id
+    }
+    scheduled_blocks: dict[tuple[str | None, str | None], ScheduledBlock] = {
+        (block.source, block.source_id): block
+        for block in busy_blocks
+        if block.source and block.source_id
+    }
+    skipped = [
+        scheduled_blocks[(item.source, item.id)]
+        for item in work_items
+        if (item.source, item.id) in scheduled_items
+    ]
+    work_items = [item for item in work_items if (item.source, item.id) not in scheduled_items]
+
     plan = schedule(work_items, busy_blocks, window)
 
     created: list[ScheduledBlock] = []
-    skipped: list[ScheduledBlock] = []
 
     if not apply:
         return SyncResult(plan=plan, created=created, skipped=skipped, unscheduled=plan.unscheduled)
