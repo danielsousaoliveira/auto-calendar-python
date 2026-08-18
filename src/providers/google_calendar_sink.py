@@ -301,19 +301,26 @@ class GoogleCalendarSink(CalendarSink):
         return bool(result.get("items"))
 
     def find_scheduled_events(self, source: str, source_id: str) -> List[dict]:
-        result = (
-            self.calendar_service.events()
-            .list(
-                calendarId=self.settings.calendar_id,
-                privateExtendedProperty=[
-                    f"source_system={source}",
-                    f"source_id={source_id}",
-                ],
-                maxResults=50,
+        items: List[dict] = []
+        page_token = None
+        while True:
+            result = (
+                self.calendar_service.events()
+                .list(
+                    calendarId=self.settings.calendar_id,
+                    privateExtendedProperty=[
+                        f"source_system={source}",
+                        f"source_id={source_id}",
+                    ],
+                    maxResults=50,
+                    pageToken=page_token,
+                )
+                .execute()
             )
-            .execute()
-        )
-        items = result.get("items", [])
+            items.extend(result.get("items", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
         return sorted(items, key=lambda event: event.get("start", {}).get("dateTime", ""))
 
     def update_event(self, event_id: str, event: EventDTO) -> dict:

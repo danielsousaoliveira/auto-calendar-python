@@ -404,6 +404,23 @@ def test_find_scheduled_events_queries_by_source_and_source_id(tmp_path, mocker)
     assert [event["id"] for event in events] == ["evt-1", "evt-2"]
 
 
+def test_find_scheduled_events_paginates_through_all_results(tmp_path, mocker):
+    service = mocker.Mock()
+    service.events.return_value.list.return_value.execute.side_effect = [
+        {
+            "items": [{"id": "evt-2", "start": {"dateTime": "2024-01-02T09:00:00+00:00"}}],
+            "nextPageToken": "page-2",
+        },
+        {"items": [{"id": "evt-1", "start": {"dateTime": "2024-01-01T09:00:00+00:00"}}]},
+    ]
+    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+
+    events = sink.find_scheduled_events("github", "item-1")
+
+    assert [event["id"] for event in events] == ["evt-1", "evt-2"]
+    assert service.events.return_value.list.call_count == 2
+
+
 def test_update_event_calls_the_calendar_api_with_the_event_id(tmp_path, mocker):
     service = mocker.Mock()
     service.events.return_value.update.return_value.execute.return_value = {"id": "evt-1"}
