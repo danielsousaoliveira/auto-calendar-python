@@ -1,9 +1,11 @@
 import json
 import os
+import socket
 import subprocess
 import sys
 from datetime import datetime, timezone
 
+import anyio
 import httpx
 import pytest
 from mcp.client.session import ClientSession
@@ -647,6 +649,51 @@ def test_only_protocol_traffic_appears_on_standard_output(tmp_path):
     assert "result" in response
 
 
+def test_cli_serves_http_transport_and_completes_handshake(tmp_path):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "src.main",
+            "server",
+            "--transport",
+            "http",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=_server_env(tmp_path),
+        text=True,
+    )
+
+    async def handshake():
+        url = f"http://127.0.0.1:{port}/mcp"
+        for _ in range(50):
+            try:
+                async with streamable_http_client(url) as (read, write, _get_session_id):
+                    async with ClientSession(read, write) as session:
+                        result = await session.initialize()
+                        return result.serverInfo.name
+            except Exception:
+                await anyio.sleep(0.1)
+        raise AssertionError("server never became reachable over HTTP")
+
+    try:
+        server_name = anyio.run(handshake)
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+    assert server_name == "auto-calendar"
+
+
 def test_real_client_completes_initial_handshake(tmp_path):
     async def handshake():
         params = StdioServerParameters(
@@ -658,8 +705,6 @@ def test_real_client_completes_initial_handshake(tmp_path):
             async with ClientSession(read, write) as session:
                 result = await session.initialize()
                 return result.serverInfo.name
-
-    import anyio
 
     server_name = anyio.run(handshake)
     assert server_name == "auto-calendar"
