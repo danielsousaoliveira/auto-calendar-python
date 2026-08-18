@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Callable, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -15,13 +15,15 @@ from mcp.types import ToolAnnotations
 
 from .auth import SCOPES
 from .dtos.event import EventDTO
-from .dtos.schedule import ScheduleWindow
+from .dtos.schedule import ScheduleWindow, ScheduledBlock
+from .dtos.work_item import Priority, Size, WorkItem
 from .dtos.task import TaskDTO
 from .errors import ConfigurationError
 from .integrations import build_calendar_sink, build_task_source
 from .providers.calendar_sink import CalendarSink
 from .providers.task_source import TaskSource
 from .settings import Settings
+from .scheduler import schedule
 
 SERVER_NAME = "auto-calendar"
 
@@ -71,6 +73,37 @@ class TrackerItem(BaseModel):
 
 class TrackerItems(BaseModel):
     items: List[TrackerItem]
+
+
+class PlanningItem(BaseModel):
+    title: str
+    priority: Optional[str] = None
+    size: Optional[str] = None
+    estimate: Optional[float] = None
+    id: Optional[str] = None
+
+
+class PlanningCommitment(BaseModel):
+    title: str
+    start: datetime
+    end: datetime
+
+
+class PlannedBlock(BaseModel):
+    title: str
+    start: datetime
+    end: datetime
+    source_id: Optional[str] = None
+
+
+class UnplannedItem(BaseModel):
+    title: str
+    reason: str
+
+
+class WeekPlan(BaseModel):
+    scheduled: List[PlannedBlock]
+    unscheduled: List[UnplannedItem]
 
 
 def build_server(
@@ -130,6 +163,35 @@ def build_server(
         return await asyncio.to_thread(_list_tracker_items, settings, task_source_factory, statuses)
 
     @server.tool(
+        name="plan_week",
+        description=(
+            "Plan work into free working-hour slots for a date range. Accepts work and existing "
+            "commitments directly and does not access configured accounts, network services, or "
+            "persist the plan. Returns both scheduled and unscheduled work."
+        ),
+        annotations=READ_ONLY,
+    )
+    async def plan_week(
+        items: List[PlanningItem],
+        start_date: str,
+        end_date: str,
+        working_day_start: str,
+        working_day_end: str,
+        timezone: Optional[str] = None,
+        commitments: Optional[List[PlanningCommitment]] = None,
+    ) -> WeekPlan:
+        return await asyncio.to_thread(
+            _plan_week,
+            items,
+            start_date,
+            end_date,
+            working_day_start,
+            working_day_end,
+            timezone,
+            commitments or [],
+        )
+
+    @server.tool(
         name="create_calendar_entry",
         description=(
             "Create exactly one calendar entry with a summary, start, end, and optional "
@@ -176,6 +238,69 @@ def build_server(
         )
 
     return server
+
+
+def _plan_week(
+    items: List[PlanningItem],
+    start_date: str,
+    end_date: str,
+    working_day_start: str,
+    working_day_end: str,
+    timezone: Optional[str],
+    commitments: List[PlanningCommitment],
+) -> WeekPlan:
+    zone = ZoneInfo(timezone or "UTC")
+    first = date.fromisoformat(start_date)
+    last = date.fromisoformat(end_date)
+    start_clock = time.fromisoformat(working_day_start)
+    end_clock = time.fromisoformat(working_day_end)
+    window = ScheduleWindow(
+        datetime.combine(first, start_clock, zone), datetime.combine(last, end_clock, zone)
+    )
+    if window.end <= window.start:
+        raise ConfigurationError(
+            "The planning date range and working hours must form a positive window",
+            hint="Use an end date on or after the start date and valid working hours.",
+        )
+    work = [
+        WorkItem(
+            id=item.id,
+            title=item.title,
+            priority=Priority[item.priority] if item.priority else None,
+            size=Size[item.size] if item.size else None,
+            estimate=item.estimate,
+        )
+        for item in items
+    ]
+    busy = []
+    for commitment in commitments:
+        start = _normalize_commitment_datetime(commitment.start, zone)
+        end = _normalize_commitment_datetime(commitment.end, zone)
+        if end <= start:
+            raise ConfigurationError(
+                f"Commitment {commitment.title!r} must end after it starts",
+                hint="Provide a commitment with an end datetime after its start datetime.",
+            )
+        busy.append(ScheduledBlock(title=commitment.title, start=start, end=end))
+    result = schedule(work, busy, window)
+    return WeekPlan(
+        scheduled=[
+            PlannedBlock(
+                title=block.title, start=block.start, end=block.end, source_id=block.source_id
+            )
+            for block in result.scheduled
+        ],
+        unscheduled=[
+            UnplannedItem(title=item.work_item.title or "", reason=item.reason)
+            for item in result.unscheduled
+        ],
+    )
+
+
+def _normalize_commitment_datetime(value: datetime, zone: ZoneInfo) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=zone)
+    return value.astimezone(zone)
 
 
 def _parse_date(settings: Settings, label: str, value: str) -> datetime:

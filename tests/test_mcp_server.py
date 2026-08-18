@@ -146,6 +146,81 @@ async def test_list_calendar_entries_returns_structured_entries(settings):
 
 
 @pytest.mark.anyio
+async def test_plan_week_works_without_integrations_or_credentials(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+        assert tools["plan_week"].annotations.readOnlyHint is True
+        result = await client.call_tool(
+            "plan_week",
+            {
+                "items": [{"title": "Write report", "priority": "P1", "estimate": 2}],
+                "start_date": "2026-08-17",
+                "end_date": "2026-08-17",
+                "working_day_start": "09:00",
+                "working_day_end": "12:00",
+            },
+        )
+
+    assert result.structuredContent["scheduled"][0]["title"] == "Write report"
+    assert not (tmp_path / "credentials.json").exists()
+
+
+@pytest.mark.anyio
+async def test_plan_week_does_not_use_network_when_network_fails(settings, monkeypatch):
+    def fail_network(*args, **kwargs):
+        raise AssertionError("plan_week attempted a network call")
+
+    monkeypatch.setattr("requests.request", fail_network)
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "plan_week",
+            {
+                "items": [{"title": "Small task", "estimate": 1}],
+                "start_date": "2026-08-17",
+                "end_date": "2026-08-17",
+                "working_day_start": "09:00",
+                "working_day_end": "09:30",
+            },
+        )
+
+    assert result.structuredContent["unscheduled"] == [
+        {"title": "Small task", "reason": "No available time remains in the scheduling window"}
+    ]
+
+
+@pytest.mark.anyio
+async def test_plan_week_normalizes_and_validates_commitments(settings):
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "plan_week",
+            {
+                "items": [{"title": "Focus work", "estimate": 1}],
+                "start_date": "2026-08-17",
+                "end_date": "2026-08-17",
+                "working_day_start": "09:00",
+                "working_day_end": "12:00",
+                "timezone": "Europe/Lisbon",
+                "commitments": [
+                    {
+                        "title": "Meeting",
+                        "start": "2026-08-17T09:00:00",
+                        "end": "2026-08-17T10:00:00",
+                    }
+                ],
+            },
+        )
+
+    assert result.structuredContent["scheduled"][0]["start"] == "2026-08-17T10:00:00+01:00"
+
+
+@pytest.mark.anyio
 async def test_list_todos_returns_structured_todos(settings):
     calendar_sink = StubCalendarSink(
         todos=[TodoItemDTO(title="Write report", status="needsAction", notes="due soon")]
