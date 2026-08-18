@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    name: Check tag matches declared version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python scripts/check_manifest_version.py
+      - id: version
+        run: python scripts/check_tag_version.py "${GITHUB_REF_NAME}"
+
+  build:
+    name: Build package
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-test-pypi:
+    name: Publish to Test PyPI (dry run)
+    needs: build
+    runs-on: ubuntu-latest
+    environment: test-pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: publish-test-pypi
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-registry:
+    name: Publish MCP registry listing
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    env:
+      MCP_PUBLISHER_VERSION: 'v1.8.1'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Download mcp-publisher
+        run: |
+          curl -sL -O "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          curl -sL -O "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz.sigstore.json"
+      - name: Verify mcp-publisher signature
+        run: |
+          cosign verify-blob \
+            --bundle mcp-publisher_linux_amd64.tar.gz.sigstore.json \
+            --certificate-identity-regexp "^https://github.com/modelcontextprotocol/registry" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            mcp-publisher_linux_amd64.tar.gz
+      - name: Extract mcp-publisher
+        run: tar xzf mcp-publisher_linux_amd64.tar.gz mcp-publisher
+      - name: Login with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+      - name: Publish manifest
+        run: ./mcp-publisher publish

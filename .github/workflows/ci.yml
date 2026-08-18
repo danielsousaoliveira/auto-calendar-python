@@ -43,6 +43,17 @@ jobs:
       - run: python -m ruff format --check .
       - run: python -m mypy src tests
 
+  workflow-lint:
+    name: Lint GitHub Actions workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: reviewdog/action-actionlint@v1
+        with:
+          fail_level: error
+
   registry-manifest:
     name: Registry manifest version check
     runs-on: ubuntu-latest
