@@ -194,6 +194,33 @@ async def test_plan_week_does_not_use_network_when_network_fails(settings, monke
 
 
 @pytest.mark.anyio
+async def test_plan_week_normalizes_and_validates_commitments(settings):
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "plan_week",
+            {
+                "items": [{"title": "Focus work", "estimate": 1}],
+                "start_date": "2026-08-17",
+                "end_date": "2026-08-17",
+                "working_day_start": "09:00",
+                "working_day_end": "12:00",
+                "timezone": "Europe/Lisbon",
+                "commitments": [
+                    {
+                        "title": "Meeting",
+                        "start": "2026-08-17T09:00:00",
+                        "end": "2026-08-17T10:00:00",
+                    }
+                ],
+            },
+        )
+
+    assert result.structuredContent["scheduled"][0]["start"] == "2026-08-17T10:00:00+01:00"
+
+
+@pytest.mark.anyio
 async def test_list_todos_returns_structured_todos(settings):
     calendar_sink = StubCalendarSink(
         todos=[TodoItemDTO(title="Write report", status="needsAction", notes="due soon")]

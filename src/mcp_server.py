@@ -272,10 +272,16 @@ def _plan_week(
         )
         for item in items
     ]
-    busy = [
-        ScheduledBlock(title=commitment.title, start=commitment.start, end=commitment.end)
-        for commitment in commitments
-    ]
+    busy = []
+    for commitment in commitments:
+        start = _normalize_commitment_datetime(commitment.start, zone)
+        end = _normalize_commitment_datetime(commitment.end, zone)
+        if end <= start:
+            raise ConfigurationError(
+                f"Commitment {commitment.title!r} must end after it starts",
+                hint="Provide a commitment with an end datetime after its start datetime.",
+            )
+        busy.append(ScheduledBlock(title=commitment.title, start=start, end=end))
     result = schedule(work, busy, window)
     return WeekPlan(
         scheduled=[
@@ -289,6 +295,12 @@ def _plan_week(
             for item in result.unscheduled
         ],
     )
+
+
+def _normalize_commitment_datetime(value: datetime, zone: ZoneInfo) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=zone)
+    return value.astimezone(zone)
 
 
 def _parse_date(settings: Settings, label: str, value: str) -> datetime:
