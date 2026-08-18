@@ -127,8 +127,10 @@ def build_server(
     settings: Settings,
     task_source_factory: Callable[[Settings], TaskSource] = build_task_source,
     calendar_sink_factory: Callable[[Settings], CalendarSink] = build_calendar_sink,
+    host: str = "127.0.0.1",
+    port: int = 8000,
 ) -> FastMCP:
-    server = FastMCP(SERVER_NAME)
+    server = FastMCP(SERVER_NAME, host=host, port=port, stateless_http=True)
 
     @server.tool(
         name="status",

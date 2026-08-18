@@ -4,9 +4,11 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from src.dtos.calendar_entry import CalendarEntryDTO, TodoItemDTO
@@ -563,6 +565,42 @@ async def test_status_tool_reports_unauthorized_for_a_malformed_token_file(setti
         result = await client.call_tool("status", {})
 
     assert result.structuredContent["google_calendar_authorized"] is False
+
+
+@pytest.mark.anyio
+async def test_capabilities_behave_identically_over_http_transport(settings):
+    item = WorkItem(
+        id="1", source="github", title="Write report", priority=Priority.P1, status="Backlog"
+    )
+    source = StubTaskSource([item])
+    sink = SyncCalendarSink()
+    server = build_server(
+        settings,
+        task_source_factory=lambda _settings: source,
+        calendar_sink_factory=lambda _settings: sink,
+    )
+    app = server.streamable_http_app()
+    http_client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app))
+
+    async with server.session_manager.run():
+        async with streamable_http_client("http://127.0.0.1:8000/mcp", http_client=http_client) as (
+            read,
+            write,
+            _get_session_id,
+        ):
+            async with ClientSession(read, write) as client:
+                await client.initialize()
+
+                tools = {tool.name for tool in (await client.list_tools()).tools}
+                assert "sync_backlog" in tools
+
+                result = await client.call_tool(
+                    "sync_backlog", {"start_date": "2026-08-17", "end_date": "2026-08-17"}
+                )
+
+    assert result.structuredContent["preview"] is True
+    assert len(result.structuredContent["planned"]) == 1
+    assert sink.created_events == []
 
 
 @pytest.fixture

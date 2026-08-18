@@ -58,8 +58,16 @@ def run_authorize(args: argparse.Namespace) -> int:
 
 def run_server(args: argparse.Namespace) -> int:
     settings = load_settings()
-    server = build_server(settings)
-    server.run(transport="stdio")
+    server = build_server(settings, host=args.host, port=args.port)
+    if args.transport == "http":
+        logger.info(
+            f"Serving over HTTP on http://{args.host}:{args.port} — single-user, local use only. "
+            "This exposes the configured Google account's calendar to anyone who can reach this "
+            "address; do not expose it on a shared or public network."
+        )
+        server.run(transport="streamable-http")
+    else:
+        server.run(transport="stdio")
     return 0
 
 
@@ -90,6 +98,22 @@ def build_parser() -> argparse.ArgumentParser:
     authorize_parser.set_defaults(func=run_authorize)
 
     server_parser = subparsers.add_parser("server", help="Run the MCP server.")
+    server_parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help=(
+            "Transport to serve over. 'http' is single-user and intended for local use only: "
+            "the server has no notion of separate users and no per-endpoint authorisation, so "
+            "anyone who can reach the address gets the configured Google account's calendar."
+        ),
+    )
+    server_parser.add_argument(
+        "--host", default="127.0.0.1", help="Host to bind when --transport http is used."
+    )
+    server_parser.add_argument(
+        "--port", type=int, default=8000, help="Port to bind when --transport http is used."
+    )
     server_parser.set_defaults(func=run_server)
 
     sync_parser = subparsers.add_parser(
