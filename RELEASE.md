@@ -5,10 +5,15 @@
 - A `pypi` GitHub Actions environment configured with a [PyPI Trusted Publisher](https://docs.pypi.org/trusted-publishers/)
   for this repository and the `release.yml` workflow, plus a `test-pypi` environment with the
   equivalent Trusted Publisher on Test PyPI. Both use OIDC — no API token is stored in GitHub.
-- The very first upload to Test PyPI for this package name must be done **manually**
-  (`python -m build && twine upload --repository testpypi dist/*`), because Test PyPI only accepts
-  Trusted Publisher OIDC claims for a project once the project exists there. Once that manual
-  upload succeeds, the automated `publish-test-pypi` job can publish every release after.
+  PyPI supports registering a Trusted Publisher as a
+  ["pending" publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
+  before the project exists, so this can be set up ahead of the first release either way.
+- The very first upload to Test PyPI for this package name must still be done **manually**
+  (`python -m build && twine upload --repository testpypi dist/*`) rather than relying on the
+  automated `publish-test-pypi` job for it. This is a deliberate choice, not a technical
+  requirement — debugging a broken automated first release is considerably more painful than
+  debugging a manual one. Once that manual upload succeeds, the automated `publish-test-pypi` job
+  can publish every release after.
 - The MCP registry listing is published via `mcp-publisher`, authenticating with GitHub OIDC
   (`mcp-publisher login github-oidc`) — no stored registry token either.
 
