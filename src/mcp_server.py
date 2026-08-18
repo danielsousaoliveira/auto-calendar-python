@@ -24,6 +24,7 @@ from .providers.calendar_sink import CalendarSink
 from .providers.task_source import TaskSource
 from .settings import Settings
 from .scheduler import schedule
+from .sync import SyncResult, run_sync
 
 SERVER_NAME = "auto-calendar"
 
@@ -103,6 +104,22 @@ class UnplannedItem(BaseModel):
 
 class WeekPlan(BaseModel):
     scheduled: List[PlannedBlock]
+    unscheduled: List[UnplannedItem]
+
+
+class SyncBlock(BaseModel):
+    title: str
+    start: datetime
+    end: datetime
+    source_id: Optional[str] = None
+
+
+class SyncReport(BaseModel):
+    summary: str
+    preview: bool
+    planned: List[SyncBlock]
+    created: List[SyncBlock]
+    skipped: List[SyncBlock]
     unscheduled: List[UnplannedItem]
 
 
@@ -189,6 +206,30 @@ def build_server(
             working_day_end,
             timezone,
             commitments or [],
+        )
+
+    @server.tool(
+        name="sync_backlog",
+        description=(
+            "Fetch the schedulable backlog, fit it around existing calendar commitments, and "
+            "return the complete result. Preview by default; pass apply=true explicitly to "
+            "create calendar events and to-dos. Existing entries are skipped."
+        ),
+        annotations=WRITES_EXTERNAL_SYSTEM,
+    )
+    async def sync_backlog(
+        start_date: str,
+        end_date: str,
+        apply: bool = False,
+    ) -> SyncReport:
+        return await asyncio.to_thread(
+            _sync_backlog,
+            settings,
+            task_source_factory,
+            calendar_sink_factory,
+            start_date,
+            end_date,
+            apply,
         )
 
     @server.tool(
@@ -301,6 +342,70 @@ def _normalize_commitment_datetime(value: datetime, zone: ZoneInfo) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=zone)
     return value.astimezone(zone)
+
+
+def _sync_backlog(
+    settings: Settings,
+    task_source_factory: Callable[[Settings], TaskSource],
+    calendar_sink_factory: Callable[[Settings], CalendarSink],
+    start_date: str,
+    end_date: str,
+    apply: bool,
+) -> SyncReport:
+    try:
+        first = date.fromisoformat(start_date)
+        last = date.fromisoformat(end_date)
+        start_clock = time.fromisoformat(settings.working_day_start)
+        end_clock = time.fromisoformat(settings.working_day_end)
+    except ValueError as exc:
+        raise ConfigurationError(
+            "Invalid sync date", hint="Use YYYY-MM-DD for start_date and end_date."
+        ) from exc
+    zone = ZoneInfo(settings.timezone)
+    window_start = datetime.combine(first, start_clock, zone)
+    window_end = datetime.combine(last, end_clock, zone)
+    if window_end <= window_start:
+        raise ConfigurationError(
+            f"end date {end_date!r} is before start date {start_date!r}",
+            hint="Pass an end date on or after the start date.",
+        )
+    result = run_sync(
+        task_source_factory(settings),
+        calendar_sink_factory(settings),
+        ScheduleWindow(window_start, window_end),
+        settings,
+        apply=apply,
+    )
+    return _sync_report(result, apply)
+
+
+def _sync_report(result: SyncResult, apply: bool) -> SyncReport:
+    def block(value: ScheduledBlock) -> SyncBlock:
+        return SyncBlock(
+            title=value.title, start=value.start, end=value.end, source_id=value.source_id
+        )
+
+    planned = [block(value) for value in result.scheduled]
+    created = [block(value) for value in result.created]
+    skipped = [block(value) for value in result.skipped]
+    unscheduled = [
+        UnplannedItem(title=value.work_item.title or "", reason=value.reason)
+        for value in result.unscheduled
+    ]
+    mode = "Created" if apply else "Planned"
+    summary = (
+        f"{mode} {len(created) if apply else len(planned)} item(s); "
+        f"skipped {len(skipped)} already present; "
+        f"could not place {len(unscheduled)}."
+    )
+    return SyncReport(
+        summary=summary,
+        preview=not apply,
+        planned=planned,
+        created=created,
+        skipped=skipped,
+        unscheduled=unscheduled,
+    )
 
 
 def _parse_date(settings: Settings, label: str, value: str) -> datetime:
