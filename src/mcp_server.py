@@ -90,7 +90,8 @@ def build_server(
         name="list_calendar_entries",
         description=(
             "List calendar entries (events and all-day items) between two dates, inclusive. "
-            "Dates are given as YYYY-MM-DD. Does not page through very large result sets. "
+            "Dates are given as YYYY-MM-DD. Returns every matching entry in a single response; "
+            "there is no cursor for paging through the result. "
             "Requires Google Calendar authorisation; call `status` first if unsure."
         ),
         annotations=READ_ONLY,
@@ -145,6 +146,11 @@ def _list_calendar_entries(
 ) -> CalendarEntries:
     window_start = _parse_date(settings, "start", start)
     window_end = _parse_date(settings, "end", end) + timedelta(days=1)
+    if window_end <= window_start:
+        raise ConfigurationError(
+            f"end date {end!r} is before start date {start!r}",
+            hint="Pass an end date on or after the start date.",
+        )
     window = ScheduleWindow(start=window_start, end=window_end)
 
     calendar_sink = calendar_sink_factory(settings)

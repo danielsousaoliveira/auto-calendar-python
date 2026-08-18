@@ -90,7 +90,7 @@ def event_to_calendar_entry(
             return None
         span_start = datetime.strptime(event_start_date, "%Y-%m-%d").date()
         span_end = datetime.strptime(event_end_date, "%Y-%m-%d").date()
-        if span_start > window.end.date() or span_end <= window.start.date():
+        if span_start >= window.end.date() or span_end <= window.start.date():
             return None
         return CalendarEntryDTO(
             title=title,

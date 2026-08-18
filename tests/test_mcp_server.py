@@ -225,6 +225,19 @@ async def test_list_tracker_items_surfaces_the_authorization_hint_when_unauthori
 
 
 @pytest.mark.anyio
+async def test_list_calendar_entries_rejects_an_end_date_before_the_start_date(settings):
+    server = build_server(settings, calendar_sink_factory=lambda _settings: StubCalendarSink())
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "list_calendar_entries", {"start": "2026-08-17", "end": "2026-08-16"}
+        )
+
+    assert result.isError is True
+    assert "end date" in result.content[0].text
+
+
+@pytest.mark.anyio
 async def test_status_tool_is_listed_with_correct_schema(settings):
     async with create_connected_server_and_client_session(
         build_server(settings)._mcp_server

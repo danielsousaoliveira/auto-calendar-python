@@ -13,6 +13,8 @@ from src.providers.google_calendar_sink import (
     build_todos,
     event_color_id,
     event_to_busy_block,
+    event_to_calendar_entry,
+    task_to_todo_item,
     todo_marker,
 )
 from src.settings import load_settings
@@ -457,3 +459,168 @@ def test_applying_the_same_plan_twice_creates_each_event_and_todo_once(tmp_path,
 
     assert len(created_events) == 1
     assert len(created_todos) == 2
+
+
+def entries_window():
+    return ScheduleWindow(
+        start=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        end=datetime(2024, 1, 2, tzinfo=timezone.utc),
+    )
+
+
+def test_event_to_calendar_entry_converts_a_zero_offset_timed_event(tmp_path):
+    event = {
+        "summary": "Meeting",
+        "start": {"dateTime": "2024-01-01T10:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T11:00:00+00:00"},
+    }
+
+    entry = event_to_calendar_entry(event, entries_window(), settings(tmp_path))
+
+    assert entry.title == "Meeting"
+    assert entry.start == datetime(2024, 1, 1, 10, tzinfo=timezone.utc)
+    assert entry.end == datetime(2024, 1, 1, 11, tzinfo=timezone.utc)
+    assert entry.all_day is False
+
+
+def test_event_to_calendar_entry_converts_a_non_zero_offset_event_into_the_configured_timezone(
+    tmp_path,
+):
+    event = {
+        "summary": "Meeting",
+        "start": {"dateTime": "2024-01-01T10:00:00+01:00"},
+        "end": {"dateTime": "2024-01-01T11:00:00+01:00"},
+    }
+
+    entry = event_to_calendar_entry(event, entries_window(), settings(tmp_path))
+
+    assert entry.start == datetime(2024, 1, 1, 9, tzinfo=timezone.utc)
+    assert entry.end == datetime(2024, 1, 1, 10, tzinfo=timezone.utc)
+
+
+def test_event_to_calendar_entry_excludes_a_timed_event_ending_exactly_at_window_start(tmp_path):
+    event = {
+        "summary": "Just before",
+        "start": {"dateTime": "2023-12-31T22:00:00+00:00"},
+        "end": {"dateTime": "2024-01-01T00:00:00+00:00"},
+    }
+
+    assert event_to_calendar_entry(event, entries_window(), settings(tmp_path)) is None
+
+
+def test_event_to_calendar_entry_excludes_a_timed_event_starting_exactly_at_window_end(tmp_path):
+    event = {
+        "summary": "Just after",
+        "start": {"dateTime": "2024-01-02T00:00:00+00:00"},
+        "end": {"dateTime": "2024-01-02T01:00:00+00:00"},
+    }
+
+    assert event_to_calendar_entry(event, entries_window(), settings(tmp_path)) is None
+
+
+def test_event_to_calendar_entry_includes_all_day_events_by_default(tmp_path):
+    event = {"summary": "Holiday", "start": {"date": "2024-01-01"}, "end": {"date": "2024-01-02"}}
+
+    entry = event_to_calendar_entry(event, entries_window(), settings(tmp_path))
+
+    assert entry.title == "Holiday"
+    assert entry.all_day is True
+    assert entry.start == datetime(2024, 1, 1, tzinfo=timezone.utc)
+    assert entry.end == datetime(2024, 1, 2, tzinfo=timezone.utc)
+
+
+def test_event_to_calendar_entry_excludes_an_all_day_event_starting_on_the_exclusive_window_end(
+    tmp_path,
+):
+    event = {"summary": "Later", "start": {"date": "2024-01-02"}, "end": {"date": "2024-01-03"}}
+
+    assert event_to_calendar_entry(event, entries_window(), settings(tmp_path)) is None
+
+
+def test_event_to_calendar_entry_excludes_an_all_day_event_ending_exactly_at_window_start(
+    tmp_path,
+):
+    event = {"summary": "Earlier", "start": {"date": "2023-12-31"}, "end": {"date": "2024-01-01"}}
+
+    assert event_to_calendar_entry(event, entries_window(), settings(tmp_path)) is None
+
+
+def test_event_to_calendar_entry_returns_none_for_a_malformed_all_day_payload(tmp_path):
+    event = {"summary": "Broken", "start": {"date": None}, "end": {}}
+
+    assert event_to_calendar_entry(event, entries_window(), settings(tmp_path)) is None
+
+
+def test_task_to_todo_item_converts_an_outstanding_task():
+    task = {"title": "Write report", "status": "needsAction", "notes": "due soon", "due": "x"}
+
+    todo = task_to_todo_item(task)
+
+    assert todo.title == "Write report"
+    assert todo.status == "needsAction"
+    assert todo.notes == "due soon"
+    assert todo.due == "x"
+
+
+def test_task_to_todo_item_excludes_completed_tasks():
+    task = {"title": "Done already", "status": "completed"}
+
+    assert task_to_todo_item(task) is None
+
+
+def test_task_to_todo_item_excludes_tasks_without_a_title():
+    task = {"status": "needsAction"}
+
+    assert task_to_todo_item(task) is None
+
+
+def test_list_entries_returns_entries_sorted_by_start_across_pages(tmp_path, mocker):
+    service = mocker.Mock()
+    service.events.return_value.list.return_value.execute.side_effect = [
+        {
+            "items": [
+                {
+                    "summary": "Second",
+                    "start": {"dateTime": "2024-01-01T12:00:00+00:00"},
+                    "end": {"dateTime": "2024-01-01T13:00:00+00:00"},
+                }
+            ],
+            "nextPageToken": "page-2",
+        },
+        {
+            "items": [
+                {
+                    "summary": "First",
+                    "start": {"dateTime": "2024-01-01T09:00:00+00:00"},
+                    "end": {"dateTime": "2024-01-01T10:00:00+00:00"},
+                }
+            ]
+        },
+    ]
+    sink = GoogleCalendarSink(service, mocker.Mock(), settings(tmp_path))
+
+    entries = sink.list_entries(entries_window())
+
+    assert [e.title for e in entries] == ["First", "Second"]
+
+
+def test_list_outstanding_todos_filters_completed_tasks_across_pages(tmp_path, mocker):
+    service = mocker.Mock()
+    service.tasks.return_value.list.return_value.execute.side_effect = [
+        {
+            "items": [
+                {"title": "Open task", "status": "needsAction"},
+                {"title": "Done task", "status": "completed"},
+            ],
+            "nextPageToken": "page-2",
+        },
+        {"items": [{"title": "Another open task", "status": "needsAction"}]},
+    ]
+    sink = GoogleCalendarSink(mocker.Mock(), service, settings(tmp_path))
+
+    todos = sink.list_outstanding_todos()
+
+    assert [t.title for t in todos] == ["Open task", "Another open task"]
+    _, kwargs = service.tasks.return_value.list.call_args_list[0]
+    assert kwargs["tasklist"] == "@default"
+    assert kwargs["showCompleted"] is False
