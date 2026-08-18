@@ -10,6 +10,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from src.dtos.calendar_entry import CalendarEntryDTO, TodoItemDTO
+from src.dtos.event import EventDTO
+from src.dtos.task import TaskDTO
 from src.dtos.work_item import Priority, Size, WorkItem
 from src.errors import AuthorizationError
 from src.mcp_server import build_server
@@ -45,6 +47,8 @@ class StubCalendarSink(CalendarSink):
     def __init__(self, entries=None, todos=None):
         self.entries = entries or []
         self.todos = todos or []
+        self.created_events = []
+        self.created_todos = []
 
     def list_busy_blocks(self, window):
         return []
@@ -56,10 +60,12 @@ class StubCalendarSink(CalendarSink):
         return self.todos
 
     def create_event(self, event):
-        raise NotImplementedError
+        self.created_events.append(event)
+        return {"id": "event-1"}
 
     def create_todo(self, task):
-        raise NotImplementedError
+        self.created_todos.append(task)
+        return {"id": "todo-1"}
 
     def has_scheduled_event(self, source, source_id, start):
         raise NotImplementedError
@@ -155,6 +161,60 @@ async def test_list_todos_returns_structured_todos(settings):
     assert result.structuredContent["todos"] == [
         {"title": "Write report", "status": "needsAction", "notes": "due soon", "due": None}
     ]
+
+
+@pytest.mark.anyio
+async def test_create_tools_write_one_entry_and_one_todo(settings):
+    calendar_sink = StubCalendarSink()
+    server = build_server(settings, calendar_sink_factory=lambda _settings: calendar_sink)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+        assert tools["create_calendar_entry"].annotations.readOnlyHint is False
+        assert tools["create_calendar_entry"].annotations.idempotentHint is False
+        assert tools["create_calendar_entry"].annotations.openWorldHint is True
+        await client.call_tool(
+            "create_calendar_entry",
+            {
+                "summary": "Focus",
+                "start": "2026-08-18T09:00:00",
+                "end": "2026-08-18T10:00:00",
+                "timezone": "Europe/Lisbon",
+                "description": "Deep work",
+                "attendees": ["person@example.com"],
+            },
+        )
+        result = await client.call_tool(
+            "create_todo", {"title": "Send notes", "note": "Before lunch", "due": "2026-08-18"}
+        )
+
+    assert len(calendar_sink.created_events) == 1
+    assert isinstance(calendar_sink.created_events[0], EventDTO)
+    assert calendar_sink.created_events[0].summary == "Focus"
+    assert len(calendar_sink.created_todos) == 1
+    assert isinstance(calendar_sink.created_todos[0], TaskDTO)
+    assert json.loads(result.content[0].text) == {"id": "todo-1"}
+
+
+@pytest.mark.anyio
+async def test_create_calendar_entry_rejects_invalid_input_before_upstream(settings):
+    calendar_sink = StubCalendarSink()
+    server = build_server(settings, calendar_sink_factory=lambda _settings: calendar_sink)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "create_calendar_entry",
+            {
+                "summary": "Invalid",
+                "start": "2026-08-18T10:00:00",
+                "end": "2026-08-18T09:00:00",
+                "timezone": "Not/AZone",
+            },
+        )
+
+    assert result.isError is True
+    assert "Unknown timezone" in result.content[0].text
+    assert calendar_sink.created_events == []
 
 
 @pytest.mark.anyio

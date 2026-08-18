@@ -14,7 +14,9 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from .auth import SCOPES
+from .dtos.event import EventDTO
 from .dtos.schedule import ScheduleWindow
+from .dtos.task import TaskDTO
 from .errors import ConfigurationError
 from .integrations import build_calendar_sink, build_task_source
 from .providers.calendar_sink import CalendarSink
@@ -24,6 +26,9 @@ from .settings import Settings
 SERVER_NAME = "auto-calendar"
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
+WRITES_EXTERNAL_SYSTEM = ToolAnnotations(
+    readOnlyHint=False, idempotentHint=False, destructiveHint=False, openWorldHint=True
+)
 
 
 class IntegrationStatus(BaseModel):
@@ -124,6 +129,52 @@ def build_server(
     async def list_tracker_items(statuses: Optional[List[str]] = None) -> TrackerItems:
         return await asyncio.to_thread(_list_tracker_items, settings, task_source_factory, statuses)
 
+    @server.tool(
+        name="create_calendar_entry",
+        description=(
+            "Create exactly one calendar entry with a summary, start, end, and optional "
+            "description and attendee email addresses. Start and end use ISO 8601 values; "
+            "a naive value is interpreted in the supplied IANA timezone. This writes to "
+            "Google Calendar and does not schedule or deduplicate entries."
+        ),
+        annotations=WRITES_EXTERNAL_SYSTEM,
+    )
+    async def create_calendar_entry(
+        summary: str,
+        start: str,
+        end: str,
+        timezone: str,
+        description: Optional[str] = None,
+        attendees: Optional[List[str]] = None,
+    ) -> dict:
+        return await asyncio.to_thread(
+            _create_calendar_entry,
+            settings,
+            calendar_sink_factory,
+            summary,
+            start,
+            end,
+            timezone,
+            description,
+            attendees,
+        )
+
+    @server.tool(
+        name="create_todo",
+        description=(
+            "Create exactly one to-do with a title and optional note and due date. "
+            "The due date must be an ISO 8601 value when supplied. This writes to Google "
+            "Tasks and does not deduplicate items."
+        ),
+        annotations=WRITES_EXTERNAL_SYSTEM,
+    )
+    async def create_todo(
+        title: str, note: Optional[str] = None, due: Optional[str] = None
+    ) -> dict:
+        return await asyncio.to_thread(
+            _create_todo, settings, calendar_sink_factory, title, note, due
+        )
+
     return server
 
 
@@ -194,6 +245,73 @@ def _list_tracker_items(
             for item in work_items
         ]
     )
+
+
+def _parse_datetime(value: str, label: str, timezone: str) -> datetime:
+    try:
+        zone = ZoneInfo(timezone)
+    except Exception as exc:
+        raise ConfigurationError(
+            f"Unknown timezone: {timezone!r}",
+            hint="Pass a valid IANA timezone name, e.g. Europe/Lisbon.",
+        ) from exc
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ConfigurationError(
+            f"Invalid {label} datetime: {value!r}",
+            hint="Use an ISO 8601 datetime, e.g. 2026-08-18T09:00:00.",
+        ) from exc
+    return parsed.replace(tzinfo=zone) if parsed.tzinfo is None else parsed
+
+
+def _create_calendar_entry(
+    settings: Settings,
+    calendar_sink_factory: Callable[[Settings], CalendarSink],
+    summary: str,
+    start: str,
+    end: str,
+    timezone: str,
+    description: Optional[str],
+    attendees: Optional[List[str]],
+) -> dict:
+    if not summary.strip():
+        raise ConfigurationError("Calendar summary cannot be empty", hint="Pass a summary.")
+    start_dt = _parse_datetime(start, "start", timezone)
+    end_dt = _parse_datetime(end, "end", timezone)
+    if end_dt <= start_dt:
+        raise ConfigurationError(
+            "Calendar entry end must be after its start",
+            hint="Pass an end datetime later than the start datetime.",
+        )
+    event = EventDTO(
+        summary=summary,
+        start={"dateTime": start_dt.isoformat(), "timeZone": timezone},
+        end={"dateTime": end_dt.isoformat(), "timeZone": timezone},
+        description=description,
+        attendees=[{"email": email} for email in (attendees or [])] or None,
+    )
+    return calendar_sink_factory(settings).create_event(event)
+
+
+def _create_todo(
+    settings: Settings,
+    calendar_sink_factory: Callable[[Settings], CalendarSink],
+    title: str,
+    note: Optional[str],
+    due: Optional[str],
+) -> dict:
+    if not title.strip():
+        raise ConfigurationError("To-do title cannot be empty", hint="Pass a title.")
+    if due is not None:
+        try:
+            datetime.fromisoformat(due.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ConfigurationError(
+                f"Invalid due datetime: {due!r}", hint="Use an ISO 8601 datetime."
+            ) from exc
+    task = TaskDTO(kind="tasks#task", title=title, notes=note or "", status="needsAction", due=due)
+    return calendar_sink_factory(settings).create_todo(task)
 
 
 def _check_status(settings: Settings) -> IntegrationStatus:
