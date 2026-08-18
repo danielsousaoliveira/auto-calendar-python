@@ -20,10 +20,10 @@
    fails the PR if `server.json` and `pyproject.toml` disagree.
 3. On `main`, tag the merge commit with `v<version>`, e.g. `git tag v0.2.0 && git push origin v0.2.0`.
 4. Pushing the tag triggers `.github/workflows/release.yml`:
-   - `check-version` fails the whole run before anything is built or published if the tag
-     (`v<version>`) doesn't match `pyproject.toml`'s version. Fix the tag or the version and
-     re-tag rather than trying to reuse the same version number — PyPI never allows re-uploading
-     a version.
+   - `check-version` fails the whole run before anything is built or published if `server.json`
+     disagrees with `pyproject.toml`, or if the tag (`v<version>`) doesn't match `pyproject.toml`'s
+     version. Fix the mismatch and re-tag rather than trying to reuse the same version number —
+     PyPI never allows re-uploading a version.
    - `build` builds the sdist and wheel and runs `twine check` on them.
    - `publish-test-pypi` uploads the same artifacts to Test PyPI as a dry run, using OIDC
      (`skip-existing: true` so re-running after a partial failure doesn't error on an artifact
