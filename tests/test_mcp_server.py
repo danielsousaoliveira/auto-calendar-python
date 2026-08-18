@@ -173,7 +173,7 @@ async def test_create_tools_write_one_entry_and_one_todo(settings):
         assert tools["create_calendar_entry"].annotations.readOnlyHint is False
         assert tools["create_calendar_entry"].annotations.idempotentHint is False
         assert tools["create_calendar_entry"].annotations.openWorldHint is True
-        await client.call_tool(
+        event_result = await client.call_tool(
             "create_calendar_entry",
             {
                 "summary": "Focus",
@@ -191,13 +191,36 @@ async def test_create_tools_write_one_entry_and_one_todo(settings):
     assert len(calendar_sink.created_events) == 1
     assert isinstance(calendar_sink.created_events[0], EventDTO)
     assert calendar_sink.created_events[0].summary == "Focus"
+    assert json.loads(event_result.content[0].text) == {"id": "event-1"}
     assert len(calendar_sink.created_todos) == 1
     assert isinstance(calendar_sink.created_todos[0], TaskDTO)
+    assert calendar_sink.created_todos[0].due == "2026-08-18T00:00:00Z"
     assert json.loads(result.content[0].text) == {"id": "todo-1"}
 
 
 @pytest.mark.anyio
-async def test_create_calendar_entry_rejects_invalid_input_before_upstream(settings):
+async def test_create_calendar_entry_rejects_unknown_timezone_before_upstream(settings):
+    calendar_sink = StubCalendarSink()
+    server = build_server(settings, calendar_sink_factory=lambda _settings: calendar_sink)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.call_tool(
+            "create_calendar_entry",
+            {
+                "summary": "Invalid",
+                "start": "2026-08-18T09:00:00",
+                "end": "2026-08-18T10:00:00",
+                "timezone": "Not/AZone",
+            },
+        )
+
+    assert result.isError is True
+    assert "Unknown timezone" in result.content[0].text
+    assert calendar_sink.created_events == []
+
+
+@pytest.mark.anyio
+async def test_create_calendar_entry_rejects_end_before_start(settings):
     calendar_sink = StubCalendarSink()
     server = build_server(settings, calendar_sink_factory=lambda _settings: calendar_sink)
 
@@ -208,12 +231,12 @@ async def test_create_calendar_entry_rejects_invalid_input_before_upstream(setti
                 "summary": "Invalid",
                 "start": "2026-08-18T10:00:00",
                 "end": "2026-08-18T09:00:00",
-                "timezone": "Not/AZone",
+                "timezone": "Europe/Lisbon",
             },
         )
 
     assert result.isError is True
-    assert "Unknown timezone" in result.content[0].text
+    assert "end must be after" in result.content[0].text
     assert calendar_sink.created_events == []
 
 

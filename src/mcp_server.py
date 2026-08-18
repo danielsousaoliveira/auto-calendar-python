@@ -305,7 +305,10 @@ def _create_todo(
         raise ConfigurationError("To-do title cannot be empty", hint="Pass a title.")
     if due is not None:
         try:
-            datetime.fromisoformat(due.replace("Z", "+00:00"))
+            if len(due) == 10:
+                due = datetime.strptime(due, "%Y-%m-%d").isoformat() + "Z"
+            else:
+                datetime.fromisoformat(due.replace("Z", "+00:00"))
         except ValueError as exc:
             raise ConfigurationError(
                 f"Invalid due datetime: {due!r}", hint="Use an ISO 8601 datetime."
