@@ -30,9 +30,15 @@ async def main() -> int:
             "CAL_AUTO_TIMEZONE": "UTC",
         }
         params = StdioServerParameters(command=str(executable), args=["server"], env=env)
-        async with stdio_client(params) as (read, write):
-            async with ClientSession(read, write) as session:
-                result = await session.initialize()
+        try:
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    result = await asyncio.wait_for(session.initialize(), timeout=30)
+        except TimeoutError:
+            print(
+                "Timed out waiting for the installed server to complete initialize", file=sys.stderr
+            )
+            return 1
 
     if result.serverInfo.version != expected_version:
         print(
