@@ -51,6 +51,27 @@ hours:
 $ uv run cal-auto-python sync --start 2026-08-17 --end 2026-08-21 --apply
 ```
 
+## Run as an MCP server
+
+```bash
+$ uv run cal-auto-python server
+```
+
+By default this speaks the MCP protocol over standard input/output, for clients that launch it as
+a child process. Some clients — web-based ones in particular, or anyone wanting to run the server
+on one machine and talk to it from another — cannot do that. For them, pass `--transport http`:
+
+```bash
+$ uv run cal-auto-python server --transport http --host 127.0.0.1 --port 8000
+```
+
+**HTTP mode is single-user and intended for local use only.** The server reads one person's stored
+Google Calendar authorisation from disk and has no notion of separate users; it does not add any
+authorisation of its own on top of the HTTP endpoint. Exposing it on a shared or public network
+would hand everyone who can reach it access to that one calendar, so only bind it to `127.0.0.1`
+or a private, trusted network. Every capability behaves identically regardless of which transport
+you connect over.
+
 ## Roadmap
 
 [x] ~~Retrieve project data from github~~ \
@@ -58,9 +79,9 @@ $ uv run cal-auto-python sync --start 2026-08-17 --end 2026-08-21 --apply
 [x] ~~Schedule based on priority~~ \
 [x] ~~Fix duplicated events and tasks~~ \
 [x] ~~Replace the hardcoded entry point with a real CLI~~ \
+[x] ~~Run as an MCP server (`cal-auto-python server`)~~ \
 [ ] Optimize event distribution \
-[ ] Update or move an event when the plan changes \
-[ ] Run as an MCP server (`cal-auto-python server`)
+[ ] Update or move an event when the plan changes
 
 ## References
 
