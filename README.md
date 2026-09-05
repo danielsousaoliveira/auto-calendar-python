@@ -195,6 +195,12 @@ exactly, including case. Open the board and copy the status name verbatim, or pa
 [x] ~~Optimize event distribution~~ \
 [ ] Update or move an event when the plan changes
 
+## Contributing
+
+Adding another task tracker or calendar backend? See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the layers and a walkthrough, and
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests, linter, and type checker.
+
 ## References
 
 [Google Calendar API](https://developers.google.com/calendar/api/quickstart/python) \
