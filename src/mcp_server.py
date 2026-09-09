@@ -293,8 +293,10 @@ def build_server(
         return (
             f"Plan my work for {window.first} to {window.last}.\n\n"
             "1. Call `list_tracker_items` to see the backlog.\n"
-            "2. Call `list_calendar_entries` for that range to see what is already committed.\n"
-            "3. Call `sync_backlog` with `apply=false` to get the proposed schedule.\n\n"
+            f"2. Call `list_calendar_entries` with start={window.first}, end={window.last} "
+            "to see what is already committed.\n"
+            f"3. Call `sync_backlog` with start_date={window.first}, end_date={window.last}, "
+            "and apply=false to get the proposed schedule.\n\n"
             "Show me the plan and tell me what would not fit. Do not call `sync_backlog` with "
             "`apply=true` until I confirm."
         )
@@ -307,9 +309,9 @@ def build_server(
         window = _prompt_window(settings, start_date, end_date)
         return (
             f"Summarise what I have on from {window.first} to {window.last}.\n\n"
-            "Call `list_calendar_entries` for that range and `list_todos` for outstanding items. "
-            "Group the result by day, note any day that looks overloaded, and list to-dos that "
-            "have no matching calendar time."
+            f"Call `list_calendar_entries` with start={window.first}, end={window.last}, and "
+            "`list_todos` for outstanding items. Group the result by day, note any day that looks "
+            "overloaded, and list to-dos that have no matching calendar time."
         )
 
     return server

@@ -765,6 +765,21 @@ async def test_plan_week_prompt_uses_the_given_range_and_withholds_apply(tmp_pat
     text = result.messages[0].content.text
     assert "2026-09-15 to 2026-09-19" in text
     assert "until I confirm" in text
+    assert "start_date=2026-09-15, end_date=2026-09-19" in text
+    assert "start=2026-09-15, end=2026-09-19" in text
+
+
+@pytest.mark.anyio
+async def test_whats_scheduled_prompt_passes_dates_to_the_calendar_tool(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.get_prompt(
+            "whats-scheduled", {"start_date": "2026-09-15", "end_date": "2026-09-19"}
+        )
+
+    assert "start=2026-09-15, end=2026-09-19" in result.messages[0].content.text
 
 
 @pytest.mark.anyio
