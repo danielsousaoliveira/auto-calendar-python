@@ -20,7 +20,5 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and size, independent of either integration.
 - Idempotent re-sync: re-running `sync_backlog` updates or skips already-scheduled
   events and to-dos instead of duplicating them.
-- Package published to PyPI as `cal-auto-python` and listed on the MCP registry as
-  `io.github.danielsousaoliveira/cal-auto-python`.
-
-[0.0.1]: https://github.com/danielsousaoliveira/auto-calendar-python/releases/tag/v0.0.1
+- Release pipeline that publishes the package to PyPI as `cal-auto-python` and lists it
+  on the MCP registry as `io.github.danielsousaoliveira/cal-auto-python`, on tag push.

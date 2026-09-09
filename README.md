@@ -193,7 +193,7 @@ exactly, including case. Open the board and copy the status name verbatim, or pa
 [x] ~~Replace the hardcoded entry point with a real CLI~~ \
 [x] ~~Run as an MCP server (`cal-auto-python server`)~~ \
 [x] ~~Optimize event distribution~~ \
-[ ] Update or move an event when the plan changes
+[x] ~~Update or move an event when the plan changes~~
 
 ## Contributing
 

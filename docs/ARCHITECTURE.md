@@ -7,7 +7,7 @@ src/
   dtos/         plain @dataclass models — WorkItem, ScheduledBlock, EventDTO, TaskDTO, ...
   providers/    the two integration interfaces: TaskSource, CalendarSink
   ghub.py       GitHubProjectsTaskSource — the only TaskSource implementation today
-  google_calendar_sink.py / auth.py
+  providers/google_calendar_sink.py / auth.py
                 GoogleCalendarSink — the only CalendarSink implementation today
   scheduler.py  schedule() — pure function, work items + busy blocks + a window in,
                 a SchedulePlan out
@@ -23,13 +23,19 @@ src/
 
 Each layer only talks to the layer(s) named above it in this list. `scheduler.py` sits
 at the bottom: it imports nothing from `providers/`, `ghub.py`, or
-`google_calendar_sink.py`.
+`providers/google_calendar_sink.py`.
 
 ## The two integration interfaces
 
 ### `TaskSource` (`src/providers/task_source.py`)
 
 ```python
+from abc import ABC, abstractmethod
+from typing import Iterable, List, Optional
+
+from ..dtos.work_item import WorkItem
+
+
 class TaskSource(ABC):
     @abstractmethod
     def list_work_items(self, statuses: Optional[Iterable[str]] = None) -> List[WorkItem]:
@@ -47,6 +53,15 @@ tracker's own status vocabulary; nothing above this layer normalizes status name
 ### `CalendarSink` (`src/providers/calendar_sink.py`)
 
 ```python
+from abc import ABC, abstractmethod
+from typing import List, Set
+
+from ..dtos.calendar_entry import CalendarEntryDTO, TodoItemDTO
+from ..dtos.event import EventDTO
+from ..dtos.schedule import ScheduleWindow, ScheduledBlock
+from ..dtos.task import TaskDTO
+
+
 class CalendarSink(ABC):
     def list_busy_blocks(self, window: ScheduleWindow) -> List[ScheduledBlock]: ...
     def list_entries(self, window: ScheduleWindow) -> List[CalendarEntryDTO]: ...
@@ -69,7 +84,7 @@ the right place.
 ## The load-bearing rule
 
 **`scheduler.py` imports nothing from `providers/`, `ghub.py`, or
-`google_calendar_sink.py`.** `schedule()` takes a `list[WorkItem]`, a `list[ScheduledBlock]`
+`providers/google_calendar_sink.py`.** `schedule()` takes a `list[WorkItem]`, a `list[ScheduledBlock]`
 (busy time), and a `ScheduleWindow`, and returns a `SchedulePlan` — all plain DTOs, no
 network calls, no knowledge of GitHub or Google.
 
