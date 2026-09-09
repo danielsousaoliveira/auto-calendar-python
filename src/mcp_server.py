@@ -284,7 +284,79 @@ def build_server(
             _create_todo, settings, calendar_sink_factory, title, note, due
         )
 
+    @server.prompt(
+        name="plan-week",
+        description="Draft a schedule for the backlog and confirm before writing anything.",
+    )
+    def plan_week_prompt(start_date: str = "", end_date: str = "") -> str:
+        window = _prompt_window(settings, start_date, end_date)
+        return (
+            f"Plan my work for {window.first} to {window.last}.\n\n"
+            "1. Call `list_tracker_items` to see the backlog.\n"
+            "2. Call `list_calendar_entries` for that range to see what is already committed.\n"
+            "3. Call `sync_backlog` with `apply=false` to get the proposed schedule.\n\n"
+            "Show me the plan and tell me what would not fit. Do not call `sync_backlog` with "
+            "`apply=true` until I confirm."
+        )
+
+    @server.prompt(
+        name="whats-scheduled",
+        description="Summarise upcoming calendar entries and outstanding to-dos.",
+    )
+    def whats_scheduled_prompt(start_date: str = "", end_date: str = "") -> str:
+        window = _prompt_window(settings, start_date, end_date)
+        return (
+            f"Summarise what I have on from {window.first} to {window.last}.\n\n"
+            "Call `list_calendar_entries` for that range and `list_todos` for outstanding items. "
+            "Group the result by day, note any day that looks overloaded, and list to-dos that "
+            "have no matching calendar time."
+        )
+
     return server
+
+
+class PromptWindow(BaseModel):
+    first: str
+    last: str
+
+
+_RANGE_PHRASES = {"this week", "next week"}
+_RELATIVE_DAYS = {"today": 0, "tomorrow": 1, "yesterday": -1}
+
+
+def _resolve_prompt_date(value: str, today: date) -> Optional[date]:
+    text = " ".join(value.lower().split())
+    if not text:
+        return None
+    if text in _RELATIVE_DAYS:
+        return today + timedelta(days=_RELATIVE_DAYS[text])
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise ConfigurationError(
+            f"Could not read {value!r} as a date",
+            hint="Use YYYY-MM-DD, or one of: today, tomorrow, yesterday, this week, next week.",
+        ) from None
+
+
+def _prompt_window(settings: Settings, start_date: str, end_date: str) -> PromptWindow:
+    today = datetime.now(ZoneInfo(settings.timezone)).date()
+
+    phrase = " ".join(start_date.lower().split())
+    if phrase in _RANGE_PHRASES and not end_date.strip():
+        monday = today - timedelta(days=today.weekday())
+        if phrase == "next week":
+            monday += timedelta(days=7)
+        return PromptWindow(first=monday.isoformat(), last=(monday + timedelta(days=6)).isoformat())
+
+    first = _resolve_prompt_date(start_date, today) or today
+    last = _resolve_prompt_date(end_date, today) or first + timedelta(days=6)
+    if last < first:
+        raise ConfigurationError(
+            f"End date {last} is before start date {first}",
+            hint="Pass start_date and end_date as YYYY-MM-DD with the end on or after the start.",
+        )
+    return PromptWindow(first=first.isoformat(), last=last.isoformat())
 
 
 def _plan_week(
