@@ -2,7 +2,7 @@
 
 ## Layers
 
-```
+```text
 src/
   dtos/         plain @dataclass models — WorkItem, ScheduledBlock, EventDTO, TaskDTO, ...
   providers/    the two integration interfaces: TaskSource, CalendarSink
