@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-06-18/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.danielsousaoliveira/cal-auto-python",
   "description": "Schedule a GitHub Projects backlog into Google Calendar, as a CLI or an MCP server.",
   "repository": {

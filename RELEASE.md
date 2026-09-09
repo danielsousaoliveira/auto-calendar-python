@@ -33,7 +33,9 @@
    - `publish-test-pypi` uploads the same artifacts to Test PyPI as a dry run, using OIDC
      (`skip-existing: true` so re-running after a partial failure doesn't error on an artifact
      that already made it to Test PyPI).
-   - `publish-pypi` uploads to real PyPI, only after the Test PyPI dry run succeeds.
+   - `publish-pypi` uploads to real PyPI, only after the Test PyPI dry run succeeds
+     (`skip-existing: true`, so a re-run after a later step fails does not error on the
+     version that already landed).
    - `publish-registry` publishes the updated `server.json` to the MCP registry, only after the
      PyPI upload succeeds.
 
@@ -52,10 +54,10 @@
   the problem, delete the tag, and re-tag — no version has been burned.
 - **`publish-pypi` fails**: the package may or may not have landed on PyPI, but the registry
   listing has not been updated yet, so it's safe to leave as-is while you investigate. Because
-  PyPI never allows overwriting a version, if the upload partially succeeded you cannot retry the
-  same version — bump to the next version and start over. If it failed cleanly before anything
-  uploaded, fix the issue and re-run the `release.yml` workflow for the same tag instead of
-  re-tagging.
+  PyPI never allows overwriting a version, but the job runs with `skip-existing: true`, so if the
+  files already landed a re-run of `release.yml` for the same tag passes over them. Fix the issue
+  and re-run the workflow for the same tag instead of re-tagging. Only if a version uploaded with
+  broken metadata that has to change do you need to bump to the next version.
 - **`publish-registry` fails**: the package is already on PyPI, so do not re-run `publish-pypi`.
   Fix the registry problem and re-run just the `publish-registry` job for the same workflow run
   (or run `mcp-publisher publish` manually from a checkout at that tag).
