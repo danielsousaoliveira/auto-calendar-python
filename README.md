@@ -160,7 +160,8 @@ $ cal-auto-python sync --env-file .env
 ```
 
 `--env-file` loads the given file (and only when passed — nothing is read from the working
-directory automatically); variables already set in the environment win over the file.
+directory automatically). Only `CAL_AUTO_*` and `GITHUB_*` keys are applied; anything else in the
+file is ignored with a warning. Variables already set in the environment win over the file.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

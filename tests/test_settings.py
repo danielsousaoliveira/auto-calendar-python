@@ -16,14 +16,36 @@ def test_apply_env_file_sets_missing_variables(tmp_path, monkeypatch):
     assert os.environ["CAL_AUTO_ENV_MARKER"] == "from_file"
 
 
-def test_apply_env_file_does_not_override_the_environment(tmp_path, monkeypatch):
-    monkeypatch.setenv("CAL_AUTO_ENV_MARKER", "from_env")
+def test_apply_env_file_never_overrides_an_existing_value(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAL_AUTO_ENV_SET", "from_env")
+    monkeypatch.setenv("GITHUB_ENV_SET", "from_env")
+    monkeypatch.delenv("CAL_AUTO_ENV_UNSET", raising=False)
     env_file = tmp_path / ".env"
-    env_file.write_text("CAL_AUTO_ENV_MARKER=from_file\n")
+    env_file.write_text(
+        "CAL_AUTO_ENV_SET=from_file\nGITHUB_ENV_SET=from_file\nCAL_AUTO_ENV_UNSET=from_file\n"
+    )
 
     apply_env_file(env_file)
 
-    assert os.environ["CAL_AUTO_ENV_MARKER"] == "from_env"
+    assert os.environ["CAL_AUTO_ENV_SET"] == "from_env"
+    assert os.environ["GITHUB_ENV_SET"] == "from_env"
+    assert os.environ["CAL_AUTO_ENV_UNSET"] == "from_file"
+
+
+def test_apply_env_file_ignores_keys_outside_the_app_namespace(tmp_path, monkeypatch, caplog):
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+    monkeypatch.delenv("CAL_AUTO_ENV_MARKER", raising=False)
+    monkeypatch.setenv("PATH", "/real/bin")
+    env_file = tmp_path / ".env"
+    env_file.write_text("PATH=/evil\nHTTPS_PROXY=http://evil\nCAL_AUTO_ENV_MARKER=ok\n")
+
+    with caplog.at_level("WARNING", logger="cal_auto_python"):
+        apply_env_file(env_file)
+
+    assert os.environ["PATH"] == "/real/bin"
+    assert "HTTPS_PROXY" not in os.environ
+    assert os.environ["CAL_AUTO_ENV_MARKER"] == "ok"
+    assert "PATH" in caplog.text and "HTTPS_PROXY" in caplog.text
 
 
 def test_apply_env_file_rejects_a_missing_path(tmp_path):

@@ -11,9 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from .errors import ConfigurationError
+from .logger import logger
+
+_ENV_FILE_PREFIXES = ("CAL_AUTO_", "GITHUB_")
 
 
 @dataclass(frozen=True)
@@ -62,7 +65,16 @@ def apply_env_file(path: str | Path) -> None:
             f"Env file not found: {env_path}",
             hint="Pass --env-file with a path to an existing file, or omit it.",
         )
-    load_dotenv(env_path, override=False)
+    values = dotenv_values(env_path)
+    ignored = sorted(key for key in values if not key.startswith(_ENV_FILE_PREFIXES))
+    if ignored:
+        logger.warning(
+            f"Ignoring {len(ignored)} key(s) in {env_path} outside the "
+            f"CAL_AUTO_/GITHUB_ namespace: {', '.join(ignored)}"
+        )
+    for key, value in values.items():
+        if key.startswith(_ENV_FILE_PREFIXES) and value is not None and key not in os.environ:
+            os.environ[key] = value
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
