@@ -134,6 +134,7 @@ dependencies = [
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
     { name = "mcp" },
+    { name = "python-dotenv" },
     { name = "requests" },
 ]
 
@@ -153,6 +154,7 @@ requires-dist = [
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
     { name = "mcp", specifier = ">=1.29,<1.30" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "requests" },
 ]
 

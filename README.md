@@ -149,8 +149,19 @@ range (today plus the next two days) and working hours.
 ## Configuration
 
 Every variable below is optional except `GITHUB_TOKEN`, `GITHUB_PROJECT_ID`, and
-`CAL_AUTO_TIMEZONE`, which has no default and must be set. Copy `.env.example` to `.env` if you use
-an environment loader.
+`CAL_AUTO_TIMEZONE`, which has no default and must be set.
+
+Configuration is read from the process environment. MCP clients pass these in the `env` block of
+their server config. For CLI use you can either export them, or copy `.env.example` to `.env` and
+point the command at it explicitly:
+
+```bash
+$ cal-auto-python sync --env-file .env
+```
+
+`--env-file` loads the given file (and only when passed — nothing is read from the working
+directory automatically). Only `CAL_AUTO_*` and `GITHUB_*` keys are applied; anything else in the
+file is ignored with a warning. Variables already set in the environment win over the file.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

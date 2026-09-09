@@ -13,7 +13,7 @@ from .errors import AutoCalendarError
 from .integrations import build_integrations
 from .logger import logger
 from .mcp_server import build_server
-from .settings import Settings, load_settings
+from .settings import Settings, apply_env_file, load_settings
 from .sync import SyncResult, run_sync
 
 
@@ -101,12 +101,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {package_version()}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--env-file",
+        help="Path to a .env file to load before reading configuration. Values already set in "
+        "the environment take precedence. No file is loaded unless this flag is given.",
+    )
+
     authorize_parser = subparsers.add_parser(
-        "authorize", help="Run the one-off Google Calendar/Tasks authorisation flow."
+        "authorize",
+        parents=[common],
+        help="Run the one-off Google Calendar/Tasks authorisation flow.",
     )
     authorize_parser.set_defaults(func=run_authorize)
 
-    server_parser = subparsers.add_parser("server", help="Run the MCP server.")
+    server_parser = subparsers.add_parser("server", parents=[common], help="Run the MCP server.")
     server_parser.add_argument(
         "--transport",
         choices=["stdio", "http"],
@@ -126,7 +135,9 @@ def build_parser() -> argparse.ArgumentParser:
     server_parser.set_defaults(func=run_server)
 
     sync_parser = subparsers.add_parser(
-        "sync", help="Fetch work items, plan a schedule, and create calendar events/tasks."
+        "sync",
+        parents=[common],
+        help="Fetch work items, plan a schedule, and create calendar events/tasks.",
     )
     sync_parser.add_argument("--start", help="First day to schedule, as YYYY-MM-DD.")
     sync_parser.add_argument("--end", help="Last day to schedule, as YYYY-MM-DD.")
@@ -142,10 +153,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
+        if args.env_file:
+            apply_env_file(args.env_file)
         return args.func(args)
     except HttpError as error:
         logger.error(f"An error occurred: {error}")
