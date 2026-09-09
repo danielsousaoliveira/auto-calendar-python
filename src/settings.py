@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from dotenv import load_dotenv
+
 from .errors import ConfigurationError
 
 
@@ -51,6 +53,16 @@ def _config_dir(environ: Mapping[str, str]) -> Path:
     if path.stat().st_uid == os.getuid():
         path.chmod(0o700)
     return path
+
+
+def apply_env_file(path: str | Path) -> None:
+    env_path = Path(path).expanduser()
+    if not env_path.is_file():
+        raise ConfigurationError(
+            f"Env file not found: {env_path}",
+            hint="Pass --env-file with a path to an existing file, or omit it.",
+        )
+    load_dotenv(env_path, override=False)
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:

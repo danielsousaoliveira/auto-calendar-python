@@ -1,7 +1,34 @@
+import os
+
 import pytest
 
 from src.errors import ConfigurationError
-from src.settings import load_settings
+from src.settings import apply_env_file, load_settings
+
+
+def test_apply_env_file_sets_missing_variables(tmp_path, monkeypatch):
+    monkeypatch.delenv("CAL_AUTO_ENV_MARKER", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("CAL_AUTO_ENV_MARKER=from_file\n")
+
+    apply_env_file(env_file)
+
+    assert os.environ["CAL_AUTO_ENV_MARKER"] == "from_file"
+
+
+def test_apply_env_file_does_not_override_the_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("CAL_AUTO_ENV_MARKER", "from_env")
+    env_file = tmp_path / ".env"
+    env_file.write_text("CAL_AUTO_ENV_MARKER=from_file\n")
+
+    apply_env_file(env_file)
+
+    assert os.environ["CAL_AUTO_ENV_MARKER"] == "from_env"
+
+
+def test_apply_env_file_rejects_a_missing_path(tmp_path):
+    with pytest.raises(ConfigurationError, match="Env file not found"):
+        apply_env_file(tmp_path / "nope.env")
 
 
 def test_override_is_created_and_isolates_credentials(tmp_path):
