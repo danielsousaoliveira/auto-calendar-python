@@ -2,9 +2,24 @@
 
 mcp-name: io.github.danielsousaoliveira/cal-auto-python
 
+[![PyPI](https://img.shields.io/pypi/v/cal-auto-python.svg)](https://pypi.org/project/cal-auto-python/)
+[![Python](https://img.shields.io/pypi/pyversions/cal-auto-python.svg)](https://pypi.org/project/cal-auto-python/)
+[![CI](https://img.shields.io/github/actions/workflow/status/danielsousaoliveira/auto-calendar-python/ci.yml?branch=main&label=CI)](https://github.com/danielsousaoliveira/auto-calendar-python/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/pypi/l/cal-auto-python.svg)](LICENSE)
+[![MCP Registry](https://img.shields.io/badge/MCP-registry-1f6feb.svg)](https://registry.modelcontextprotocol.io/v0/servers?search=cal-auto-python)
+
 An MCP server that connects your GitHub Projects backlog to Google Calendar and Google Tasks. Point
 your assistant at it and ask it to show what's on your calendar, list your backlog, plan a week of
 work into your free time, or turn that plan into real events and to-dos.
+
+![Asking Claude Code what the week looks like](img/claude.png)
+
+A backlog board on the left becomes a scheduled week on the right, with each markdown checkbox
+carried across as its own to-do:
+
+| Before | After |
+| --- | --- |
+| ![GitHub Projects backlog](img/github-backlog.png) | ![The same items scheduled in Google Calendar](img/google-calendar.png) |
 
 ## Install
 
@@ -42,10 +57,34 @@ Authorisation needs a Google OAuth client:
 The server speaks MCP over stdio by default, which is what these clients expect. Every capability
 behaves the same regardless of client.
 
-### Claude Desktop / Claude Code
+### Claude Code
 
-Add to `claude_desktop_config.json` (Desktop) or run `claude mcp add` (Claude Code), or paste this
-into either client's MCP settings:
+Register it in one command:
+
+```bash
+$ claude mcp add auto-calendar \
+    -e GITHUB_TOKEN=your_github_token_here \
+    -e GITHUB_PROJECT_ID=PVT_xxxxxxxxxx \
+    -e CAL_AUTO_TIMEZONE=Europe/Lisbon \
+    -- cal-auto-python server
+```
+
+Add `-s user` to make it available in every project instead of only the current one. To keep the
+token out of `~/.claude.json` and out of the process list, put your settings in a file and pass
+that instead — note that the path must be absolute, since Claude Code starts the server from
+whichever directory you launch it in:
+
+```bash
+$ claude mcp add auto-calendar -- cal-auto-python server --env-file /absolute/path/to/.env
+```
+
+Then `/mcp` lists the server and its tools, and the prompts appear as `/auto-calendar:plan-week`
+and `/auto-calendar:whats-scheduled`. Use `claude mcp list` to check registration and
+`claude mcp remove auto-calendar` to undo it.
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json`:
 
 ```json
 {
@@ -97,6 +136,15 @@ Add to `.cursor/mcp.json` in your project (or the global `~/.cursor/mcp.json`):
 }
 ```
 
+To poke at the server without a client, point the
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) at it:
+
+```bash
+$ npx @modelcontextprotocol/inspector cal-auto-python server
+```
+
+![sync_backlog previewing a plan in the MCP Inspector](img/mcp-inspector.png)
+
 Web-based clients, or anyone wanting to run the server on one machine and talk to it from another,
 can't launch a stdio child process. For them, run the server over HTTP instead:
 
@@ -136,6 +184,17 @@ network.
 | `create_calendar_entry` | `summary`, `start`, `end`, `timezone`, `description` (optional), `attendees` (optional) | Creates one calendar event. Does not schedule or deduplicate. |
 | `create_todo` | `title`, `note` (optional), `due` (optional) | Creates one Google Task. Does not deduplicate. |
 
+Two prompts wrap the common workflows, so they show up as one-click starting points in clients
+that support them (slash commands in Claude Code and Claude Desktop, for instance). Both take
+optional `start_date` and `end_date` (`YYYY-MM-DD`) and default to the next seven days.
+
+| Prompt | What it asks for |
+| --- | --- |
+| `plan-week` | Reads the backlog and existing commitments, previews a schedule, and waits for your confirmation before anything is written. |
+| `whats-scheduled` | Summarises calendar entries and outstanding to-dos by day, flagging overloaded days and to-dos with no calendar time. |
+
+![The prompts offered as slash commands in Claude Code](img/prompts.png)
+
 The CLI exposes the same scheduling logic directly:
 
 ```bash
@@ -145,6 +204,8 @@ $ cal-auto-python sync --start 2026-08-17 --end 2026-08-21 --apply
 `sync` previews by default; pass `--apply` to create events and tasks, and `--start`/`--end`
 (`YYYY-MM-DD`) or `--working-day-start`/`--working-day-end` (`HH:MM`) to override the default
 range (today plus the next two days) and working hours.
+
+![cal-auto-python sync planning and creating events](img/terminal.png)
 
 ## Configuration
 

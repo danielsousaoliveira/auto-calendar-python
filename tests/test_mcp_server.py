@@ -3,7 +3,7 @@ import os
 import socket
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import anyio
 import httpx
@@ -738,3 +738,109 @@ def test_real_client_completes_initial_handshake(tmp_path):
 
     server_name = anyio.run(handshake)
     assert server_name == "auto-calendar"
+
+
+@pytest.mark.anyio
+async def test_prompts_are_listed_with_optional_date_arguments(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        prompts = {prompt.name: prompt for prompt in (await client.list_prompts()).prompts}
+
+    assert set(prompts) == {"plan-week", "whats-scheduled"}
+    assert all(not argument.required for argument in prompts["plan-week"].arguments)
+
+
+@pytest.mark.anyio
+async def test_plan_week_prompt_uses_the_given_range_and_withholds_apply(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.get_prompt(
+            "plan-week", {"start_date": "2026-09-15", "end_date": "2026-09-19"}
+        )
+
+    text = result.messages[0].content.text
+    assert "2026-09-15 to 2026-09-19" in text
+    assert "until I confirm" in text
+    assert "start_date=2026-09-15, end_date=2026-09-19" in text
+    assert "start=2026-09-15, end=2026-09-19" in text
+
+
+@pytest.mark.anyio
+async def test_whats_scheduled_prompt_passes_dates_to_the_calendar_tool(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.get_prompt(
+            "whats-scheduled", {"start_date": "2026-09-15", "end_date": "2026-09-19"}
+        )
+
+    assert "start=2026-09-15, end=2026-09-19" in result.messages[0].content.text
+
+
+@pytest.mark.anyio
+async def test_prompts_default_to_a_week_from_today(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+    today = datetime.now(timezone.utc).date()
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.get_prompt("whats-scheduled", {})
+
+    text = result.messages[0].content.text
+    assert f"{today.isoformat()} to {(today + timedelta(days=6)).isoformat()}" in text
+
+
+@pytest.mark.anyio
+async def test_whats_scheduled_prompt_accepts_next_week(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+    today = datetime.now(timezone.utc).date()
+    monday = today - timedelta(days=today.weekday()) + timedelta(days=7)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.get_prompt("whats-scheduled", {"start_date": "next week"})
+
+    text = result.messages[0].content.text
+    assert f"{monday.isoformat()} to {(monday + timedelta(days=6)).isoformat()}" in text
+
+
+@pytest.mark.anyio
+async def test_whats_scheduled_prompt_accepts_relative_days(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+    today = datetime.now(timezone.utc).date()
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        result = await client.get_prompt(
+            "whats-scheduled", {"start_date": "today", "end_date": "tomorrow"}
+        )
+
+    text = result.messages[0].content.text
+    assert f"{today.isoformat()} to {(today + timedelta(days=1)).isoformat()}" in text
+
+
+@pytest.mark.anyio
+async def test_prompt_rejects_an_unparseable_date(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        with pytest.raises(Exception, match="Could not read"):
+            await client.get_prompt("whats-scheduled", {"start_date": "sometime soon"})
+
+
+@pytest.mark.anyio
+async def test_prompt_rejects_an_end_date_before_the_start(tmp_path):
+    settings = load_settings({"CAL_AUTO_CONFIG_DIR": str(tmp_path), "CAL_AUTO_TIMEZONE": "UTC"})
+    server = build_server(settings)
+
+    async with create_connected_server_and_client_session(server._mcp_server) as client:
+        with pytest.raises(Exception, match="before start date"):
+            await client.get_prompt(
+                "plan-week", {"start_date": "2026-09-19", "end_date": "2026-09-15"}
+            )
