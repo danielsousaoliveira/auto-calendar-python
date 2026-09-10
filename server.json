@@ -6,13 +6,13 @@
     "url": "https://github.com/danielsousaoliveira/auto-calendar-python",
     "source": "github"
   },
-  "version": "0.0.1",
+  "version": "0.1.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "cal-auto-python",
-      "version": "0.0.1",
+      "version": "0.1.0",
       "transport": {
         "type": "stdio"
       },
